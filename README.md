@@ -1,7 +1,55 @@
-# Tauri + Vue + TypeScript
+# Desk Pet 桌面精灵
 
-This template should help get you started developing with Vue 3 and TypeScript in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+基于 Tauri 2 + Vue 3 + TypeScript + Element Plus 的跨平台桌面宠物。
 
-## Recommended IDE Setup
+## 功能特性
 
-- [VS Code](https://code.visualstudio.com/) + [Vue - Official](https://marketplace.visualstudio.com/items?itemName=Vue.volar) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+- **桌面漂浮精灵**：无边框透明窗口、始终置顶、不占任务栏、可见于所有工作区（macOS）
+- **自由拖拽**：按住精灵拖到屏幕任意位置，位置自动记忆、重启恢复、贴边自动钳制
+- **单击展开面板**，再次单击精灵或右上角按钮收起
+- **应用启动器**：应用 / 网址 / 命令 三类入口，支持增删改、自定义图标与颜色
+- **便签**：随手记录、多色彩、输入防抖自动保存
+- **番茄钟**：专注 / 短休 / 长休循环，到时系统通知提醒
+- **剪贴板历史**：自动捕获复制内容（仅文本，最多 100 条，超长自动截断），支持搜索、一键回贴、单条删除、清空
+- **快捷操作**：深浅模式切换、静音、锁屏、睡眠、直达系统设置各子页
+- **系统托盘**：显示/隐藏精灵、退出
+- **全局快捷键**：`Command/Ctrl + Shift + P` 显示/隐藏
+- **开机自启**：设置页开关
+
+## 平台支持
+
+| 功能 | macOS | Windows |
+| --- | --- | --- |
+| 漂浮 / 置顶 / 拖拽 / 位置记忆 | 支持 | 支持 |
+| 启动器 / 便签 / 番茄钟 / 剪贴板 | 支持 | 支持 |
+| 深浅模式切换、静音 | 支持（首次使用需在系统弹窗中授权自动化） | 暂不支持 |
+| 锁屏 / 睡眠 / 系统设置跳转 | 支持 | 支持 |
+
+> Linux（尤其 Wayland 下透明与置顶窗口）暂不在支持范围内。
+
+## 开发
+
+前置要求：Node.js 20+、Rust stable 工具链。
+
+```bash
+npm install
+npm run tauri dev    # 开发调试
+npm run tauri build  # 打包发布
+```
+
+## 技术要点
+
+- 透明窗口依赖 macOS 私有 API（`tauri.conf.json` 的 `macOSPrivateApi` + Cargo 的
+  `macos-private-api` feature），因此**不能上架 Mac App Store**，个人使用无影响
+- 拖拽与点击判定：Pointer 事件 + 4px 位移阈值 + 原生 `startDragging`，避免点击误触为拖拽
+- 展开/收起采用**单窗口编程式 resize**（120×120 ⇄ 360×560），无需多窗口同步
+- 数据持久化：serde JSON，位于 `~/Library/Application Support/com.deskpet.desktop/`
+  （Windows 为 `%APPDATA%\com.deskpet.desktop\`）
+- 剪贴板：Rust 后台线程每秒轮询（arboard），去重后经 Tauri 事件推送给前端
+- 番茄钟剩余时间基于时间戳计算，规避 WebView 定时器节流漂移
+
+## 已知限制
+
+- 精灵窗口为矩形，其透明边角会遮挡下方桌面点击（透明区域点击穿透暂未实现）
+- `alwaysOnTop` 无法悬浮在 macOS 原生全屏应用之上
+- 剪贴板历史仅记录文本，不含图片

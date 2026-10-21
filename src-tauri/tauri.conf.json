@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "scaffold-tmp",
+  "productName": "Desk Pet",
   "version": "0.1.0",
-  "identifier": "com.shaipe.scaffold-tmp",
+  "identifier": "com.deskpet.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -10,11 +10,20 @@
     "frontendDist": "../dist"
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [
       {
-        "title": "scaffold-tmp",
-        "width": 800,
-        "height": 600
+        "label": "main",
+        "title": "Desk Pet",
+        "width": 120,
+        "height": 120,
+        "transparent": true,
+        "decorations": false,
+        "shadow": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "resizable": false,
+        "visibleOnAllWorkspaces": true
       }
     ],
     "security": {

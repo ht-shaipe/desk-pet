@@ -1,0 +1,52 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+}
+
+body {
+  font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", -apple-system,
+    BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 13px;
+  color: #1f2937;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.app-root {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ---------- 通用视图骨架（面板内各视图共用） ---------- */
+
+.view-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  flex-shrink: 0;
+}
+
+.toolbar-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+  margin-right: auto;
+}
+
+.view-scroll {
+  flex: 1;
+  min-height: 0;
+}
