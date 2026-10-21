@@ -8,7 +8,7 @@ import LauncherGrid from "./LauncherGrid.vue";
 import NotesView from "./NotesView.vue";
 import PomodoroView from "./PomodoroView.vue";
 import ClipboardView from "./ClipboardView.vue";
-import ToolboxView from "./ToolboxView.vue";
+import ToolboxView from "./toolbox/ToolboxView.vue";
 import QuickSettingsView from "./QuickSettingsView.vue";
 import SettingsView from "./SettingsView.vue";
 

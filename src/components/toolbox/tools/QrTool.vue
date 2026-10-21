@@ -10,8 +10,8 @@ import type { ImagePayload } from "@/types";
 
 const { t } = useI18n();
 
-type Tool = "generate" | "parse";
-const tool = ref<Tool>("generate");
+type QrMode = "generate" | "parse";
+const mode = ref<QrMode>("generate");
 
 /* ---------- 生成二维码 ---------- */
 const qrText = ref("");
@@ -22,7 +22,7 @@ const generated = ref(false);
 async function generate() {
   const text = qrText.value.trim();
   if (!text) {
-    ElMessage.warning(t("toolbox.emptyWarn"));
+    ElMessage.warning(t("toolbox.tools.qr.emptyWarn"));
     return;
   }
   const canvas = canvasRef.value;
@@ -33,7 +33,7 @@ async function generate() {
     await QRCode.toCanvas(canvas, text, { width: qrSize.value, margin: 2 });
     generated.value = true;
   } catch (e) {
-    ElMessage.error(t("toolbox.generateFail", { err: String(e) }));
+    ElMessage.error(t("toolbox.tools.qr.generateFail", { err: String(e) }));
   }
 }
 
@@ -52,7 +52,7 @@ async function copyImage() {
     height: canvas.height,
     rgba: Array.from(data.data),
   });
-  ElMessage.success(t("toolbox.imageCopied"));
+  ElMessage.success(t("toolbox.tools.qr.imageCopied"));
 }
 
 async function saveImage() {
@@ -62,7 +62,7 @@ async function saveImage() {
   }
   try {
     await saveQrPng(canvas.toDataURL("image/png"));
-    ElMessage.success(t("toolbox.imageSaved"));
+    ElMessage.success(t("toolbox.tools.qr.imageSaved"));
   } catch (e) {
     ElMessage.error(String(e));
   }
@@ -78,10 +78,10 @@ async function decodeImageData(imgData: ImageData): Promise<void> {
   const code = jsQR(imgData.data, imgData.width, imgData.height);
   if (code && code.data) {
     parseResult.value = code.data;
-    ElMessage.success(t("toolbox.decodeOk"));
+    ElMessage.success(t("toolbox.tools.qr.decodeOk"));
   } else {
     parseResult.value = "";
-    ElMessage.warning(t("toolbox.decodeFail"));
+    ElMessage.warning(t("toolbox.tools.qr.decodeFail"));
   }
 }
 
@@ -121,7 +121,7 @@ async function pasteFromClipboard() {
   try {
     const img = await getClipboardImage();
     if (!img) {
-      ElMessage.warning(t("toolbox.noImage"));
+      ElMessage.warning(t("toolbox.tools.qr.noImage"));
       return;
     }
     await handlePayload(img);
@@ -154,7 +154,7 @@ function onFileChange(event: Event) {
   };
   image.onerror = () => {
     URL.revokeObjectURL(url);
-    ElMessage.error(t("toolbox.loadFail"));
+    ElMessage.error(t("toolbox.tools.qr.loadFail"));
   };
   image.src = url;
   input.value = "";
@@ -162,51 +162,54 @@ function onFileChange(event: Event) {
 
 async function copyResult() {
   await copyToClipboard(parseResult.value);
-  ElMessage.success(t("toolbox.textCopied"));
+  ElMessage.success(t("toolbox.tools.qr.textCopied"));
 }
 </script>
 
 <template>
-  <div class="toolbox-view">
-    <div class="view-toolbar">
-      <span class="toolbar-title">{{ t("toolbox.title") }}</span>
-      <div class="tool-switch">
-        <button class="switch-btn" :class="{ active: tool === 'generate' }" @click="tool = 'generate'">
-          {{ t("toolbox.generate") }}
+  <div class="qr-tool">
+    <div class="mode-row">
+      <div class="mode-switch">
+        <button
+          class="switch-btn"
+          :class="{ active: mode === 'generate' }"
+          @click="mode = 'generate'"
+        >
+          {{ t("toolbox.tools.qr.generate") }}
         </button>
-        <button class="switch-btn" :class="{ active: tool === 'parse' }" @click="tool = 'parse'">
-          {{ t("toolbox.parse") }}
+        <button class="switch-btn" :class="{ active: mode === 'parse' }" @click="mode = 'parse'">
+          {{ t("toolbox.tools.qr.parse") }}
         </button>
       </div>
     </div>
 
-    <el-scrollbar v-if="tool === 'generate'" class="view-scroll">
+    <el-scrollbar v-if="mode === 'generate'" class="view-scroll">
       <el-input
         v-model="qrText"
         type="textarea"
         :rows="3"
-        :placeholder="t('toolbox.inputPh')"
+        :placeholder="t('toolbox.tools.qr.inputPh')"
         maxlength="500"
       />
       <div class="size-row">
-        <span class="size-label">{{ t("toolbox.size") }}</span>
+        <span class="size-label">{{ t("toolbox.tools.qr.size") }}</span>
         <el-radio-group v-model="qrSize" size="small">
           <el-radio-button :value="180">180</el-radio-button>
           <el-radio-button :value="240">240</el-radio-button>
           <el-radio-button :value="320">320</el-radio-button>
         </el-radio-group>
         <el-button class="gen-btn" type="primary" size="small" @click="generate">
-          {{ t("toolbox.generateBtn") }}
+          {{ t("toolbox.tools.qr.generateBtn") }}
         </el-button>
       </div>
       <div v-show="generated" class="qr-preview">
         <canvas ref="canvasRef" class="qr-canvas" />
         <div class="qr-actions">
           <el-button size="small" :icon="CopyDocument" @click="copyImage">
-            {{ t("toolbox.copyImage") }}
+            {{ t("toolbox.tools.qr.copyImage") }}
           </el-button>
           <el-button size="small" :icon="Download" @click="saveImage">
-            {{ t("toolbox.saveImage") }}
+            {{ t("toolbox.tools.qr.saveImage") }}
           </el-button>
         </div>
       </div>
@@ -215,10 +218,10 @@ async function copyResult() {
     <el-scrollbar v-else class="view-scroll">
       <div class="parse-actions">
         <el-button size="small" type="primary" :icon="Picture" @click="pasteFromClipboard">
-          {{ t("toolbox.paste") }}
+          {{ t("toolbox.tools.qr.paste") }}
         </el-button>
         <el-button size="small" :icon="Upload" @click="fileInputRef?.click()">
-          {{ t("toolbox.choose") }}
+          {{ t("toolbox.tools.qr.choose") }}
         </el-button>
         <input
           ref="fileInputRef"
@@ -232,26 +235,31 @@ async function copyResult() {
         <canvas ref="previewCanvasRef" class="preview-canvas" />
       </div>
       <div v-if="parseResult" class="parse-result">
-        <div class="result-label">{{ t("toolbox.result") }}</div>
+        <div class="result-label">{{ t("toolbox.tools.qr.result") }}</div>
         <div class="result-text">{{ parseResult }}</div>
         <el-button size="small" text type="primary" :icon="DocumentChecked" @click="copyResult">
-          {{ t("toolbox.copyText") }}
+          {{ t("toolbox.tools.qr.copyText") }}
         </el-button>
       </div>
-      <el-empty v-if="!parseLoaded" :description="t('toolbox.parseHint')" :image-size="60" />
+      <el-empty v-if="!parseLoaded" :description="t('toolbox.tools.qr.parseHint')" :image-size="60" />
     </el-scrollbar>
   </div>
 </template>
 
 <style scoped>
-.toolbox-view {
+.qr-tool {
   display: flex;
   flex-direction: column;
   height: 100%;
   min-height: 0;
 }
 
-.tool-switch {
+.mode-row {
+  display: flex;
+  margin-bottom: 10px;
+}
+
+.mode-switch {
   display: flex;
   gap: 4px;
 }
