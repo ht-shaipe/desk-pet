@@ -19,9 +19,7 @@ const rootClass = computed(() => ({
 
 <template>
   <div class="pet-wrap" :class="rootClass" v-bind="dragHandlers">
-    <div class="pet-scale">
-      <img class="pet-img" src="/images/avatar.png" alt="pet" draggable="false" />
-    </div>
+    <img class="pet-img" src="/images/avatar.png" alt="pet" draggable="false" />
   </div>
 </template>
 
@@ -30,8 +28,8 @@ const rootClass = computed(() => ({
   position: absolute;
   top: 0;
   left: 0;
-  width: 96px;
-  height: 96px;
+  width: 80px;
+  height: 80px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -39,17 +37,6 @@ const rootClass = computed(() => ({
   z-index: 20;
   touch-action: none;
   transition: transform 0.2s ease;
-}
-
-/* 内部保持 120px 坐标系绘制，整体缩放到窗口尺寸 */
-.pet-scale {
-  width: 120px;
-  height: 120px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transform: scale(0.8);
-  transform-origin: center;
 }
 
 .pet-wrap.expanded {
@@ -62,10 +49,12 @@ const rootClass = computed(() => ({
 }
 
 .pet-img {
-  width: 92px;
-  height: 92px;
-  object-fit: contain;
-  filter: drop-shadow(0 8px 16px rgba(31, 41, 55, 0.28));
+  width: 62px;
+  height: 62px;
+  object-fit: cover;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.85);
+  filter: drop-shadow(0 6px 14px rgba(31, 41, 55, 0.3));
   transition: transform 0.25s ease, filter 0.25s ease;
   animation: pet-breathe 3.2s ease-in-out infinite;
   user-select: none;

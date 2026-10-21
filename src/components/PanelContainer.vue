@@ -73,7 +73,7 @@ const tabs: Array<{ view: PanelView; label: string; icon: Component }> = [
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 12px 4px 88px;
+  padding: 10px 12px 4px 72px;
   min-height: 32px;
 }
 
@@ -87,7 +87,7 @@ const tabs: Array<{ view: PanelView; label: string; icon: Component }> = [
 .panel-tabs {
   display: flex;
   gap: 4px;
-  padding: 0 12px 8px 88px;
+  padding: 0 12px 8px 72px;
   border-bottom: 1px solid #eef0f3;
 }
 

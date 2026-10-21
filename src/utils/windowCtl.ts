@@ -1,7 +1,7 @@
 import { currentMonitor, getCurrentWindow } from "@tauri-apps/api/window";
 import { PhysicalPosition, PhysicalSize } from "@tauri-apps/api/dpi";
 
-export const PET_SIZE = 96;
+export const PET_SIZE = 80;
 export const PANEL_WIDTH = 360;
 export const PANEL_HEIGHT = 560;
 
