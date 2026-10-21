@@ -2,24 +2,26 @@ import { defineStore } from "pinia";
 import { ref } from "vue";
 import { getLauncher, saveLauncher } from "@/api";
 import type { LauncherItem } from "@/types";
+import { i18n } from "@/i18n";
 import { useConfigStore } from "./config";
 
 const PALETTE = ["#409eff", "#67c23a", "#e6a23c", "#f56c6c", "#7265e6", "#00a2ae", "#eb2f96", "#909399"];
 
-/** 首次运行时按平台预置几个常用启动项。 */
+/** 首次运行时按平台预置几个常用启动项（名称跟随界面语言）。 */
 function seedItems(platform: string): LauncherItem[] {
+  const t = i18n.global.t;
   if (platform === "windows") {
     return [
-      { id: "seed-cmd", name: "命令提示符", icon: "C", item_type: "command", value: "cmd", color: "#409eff" },
-      { id: "seed-notepad", name: "记事本", icon: "N", item_type: "command", value: "notepad", color: "#67c23a" },
-      { id: "seed-calc", name: "计算器", icon: "计算", item_type: "command", value: "calc", color: "#e6a23c" },
+      { id: "seed-cmd", name: t("launcher.seeds.cmd"), icon: "C", item_type: "command", value: "cmd", color: "#409eff" },
+      { id: "seed-notepad", name: t("launcher.seeds.notepad"), icon: "N", item_type: "command", value: "notepad", color: "#67c23a" },
+      { id: "seed-calc", name: t("launcher.seeds.calc"), icon: "Cal", item_type: "command", value: "calc", color: "#e6a23c" },
       { id: "seed-github", name: "GitHub", icon: "G", item_type: "url", value: "https://github.com", color: "#909399" },
     ];
   }
   return [
     { id: "seed-safari", name: "Safari", icon: "S", item_type: "app", value: "Safari", color: "#409eff" },
-    { id: "seed-terminal", name: "终端", icon: "T", item_type: "app", value: "Terminal", color: "#374151" },
-    { id: "seed-notes", name: "备忘录", icon: "N", item_type: "app", value: "Notes", color: "#e6a23c" },
+    { id: "seed-terminal", name: t("launcher.seeds.terminal"), icon: "T", item_type: "app", value: "Terminal", color: "#374151" },
+    { id: "seed-notes", name: t("launcher.seeds.notes"), icon: "N", item_type: "app", value: "Notes", color: "#e6a23c" },
     { id: "seed-github", name: "GitHub", icon: "G", item_type: "url", value: "https://github.com", color: "#909399" },
   ];
 }

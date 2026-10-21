@@ -1,15 +1,30 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { emit } from "@tauri-apps/api/event";
 import { getPlatform, getSettings, saveSettings } from "@/api";
 import type { AppSettings } from "@/types";
+import { detectLocale, setAppLocale, type AppLocale } from "@/i18n";
 import { initWindowPosition } from "@/utils/windowCtl";
 import { useUiStore } from "./ui";
 
 const win = getCurrentWindow();
 
+/** 归一化持久化的语言值，非法值回退为系统语言检测。 */
+function normalizeLocale(value: string | null): AppLocale {
+  if (value === "zh-CN" || value === "en") {
+    return value;
+  }
+  return detectLocale();
+}
+
 export const useConfigStore = defineStore("config", () => {
-  const settings = ref<AppSettings>({ pet_x: null, pet_y: null, always_on_top: true });
+  const settings = ref<AppSettings>({
+    pet_x: null,
+    pet_y: null,
+    always_on_top: true,
+    locale: null,
+  });
   const platform = ref("");
   const windowMoving = ref(false);
 
@@ -49,17 +64,31 @@ export const useConfigStore = defineStore("config", () => {
     schedulePersist();
   }
 
+  /** 切换界面语言：更新 i18n、持久化并通知 Rust 重建托盘菜单。 */
+  async function setLocale(locale: string) {
+    const loc = normalizeLocale(locale);
+    settings.value.locale = loc;
+    setAppLocale(loc);
+    schedulePersist();
+    await emit("i18n://locale-changed", loc);
+  }
+
   async function init() {
     platform.value = await getPlatform();
     const s = await getSettings();
+    const locale = normalizeLocale(s.locale);
     settings.value = {
       pet_x: s.pet_x,
       pet_y: s.pet_y,
       always_on_top: s.always_on_top,
+      locale,
     };
+    setAppLocale(locale);
+    // 启动时同步一次语言，托盘菜单跟随系统语言/用户设置
+    await emit("i18n://locale-changed", locale);
     await initWindowPosition(s.pet_x !== null && s.pet_y !== null, s.pet_x, s.pet_y);
     await win.setAlwaysOnTop(settings.value.always_on_top);
   }
 
-  return { settings, platform, windowMoving, init, onWindowMoved, setAlwaysOnTop };
+  return { settings, platform, windowMoving, init, onWindowMoved, setAlwaysOnTop, setLocale };
 });

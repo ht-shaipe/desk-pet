@@ -28,8 +28,8 @@ const rootClass = computed(() => ({
   position: absolute;
   top: 0;
   left: 0;
-  width: 80px;
-  height: 80px;
+  width: 72px;
+  height: 72px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -49,12 +49,11 @@ const rootClass = computed(() => ({
 }
 
 .pet-img {
-  width: 62px;
-  height: 62px;
+  width: 54px;
+  height: 54px;
   object-fit: cover;
   border-radius: 50%;
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.85);
-  filter: drop-shadow(0 6px 14px rgba(31, 41, 55, 0.3));
+  filter: drop-shadow(0 2px 6px rgba(31, 41, 55, 0.12));
   transition: transform 0.25s ease, filter 0.25s ease;
   animation: pet-breathe 3.2s ease-in-out infinite;
   user-select: none;
@@ -63,7 +62,7 @@ const rootClass = computed(() => ({
 }
 
 .pet-wrap:hover .pet-img {
-  filter: drop-shadow(0 12px 22px rgba(31, 41, 55, 0.4));
+  filter: drop-shadow(0 4px 10px rgba(31, 41, 55, 0.16));
 }
 
 .pet-wrap.dragging .pet-img {

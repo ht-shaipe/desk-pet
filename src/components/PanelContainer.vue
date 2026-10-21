@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import type { Component } from "vue";
+import { computed } from "vue";
+import { useI18n } from "vue-i18n";
 import { CopyDocument, Grid, MagicStick, Minus, Notebook, Setting, Timer } from "@element-plus/icons-vue";
 import { useUiStore, type PanelView } from "@/stores/ui";
 import LauncherGrid from "./LauncherGrid.vue";
@@ -10,22 +12,23 @@ import QuickSettingsView from "./QuickSettingsView.vue";
 import SettingsView from "./SettingsView.vue";
 
 const ui = useUiStore();
+const { t } = useI18n();
 
-const tabs: Array<{ view: PanelView; label: string; icon: Component }> = [
-  { view: "launcher", label: "启动器", icon: Grid },
-  { view: "notes", label: "便签", icon: Notebook },
-  { view: "pomodoro", label: "番茄钟", icon: Timer },
-  { view: "clipboard", label: "剪贴板", icon: CopyDocument },
-  { view: "quick", label: "快捷操作", icon: MagicStick },
-  { view: "settings", label: "设置", icon: Setting },
-];
+const tabs = computed<Array<{ view: PanelView; label: string; icon: Component }>>(() => [
+  { view: "launcher", label: t("tabs.launcher"), icon: Grid },
+  { view: "notes", label: t("tabs.notes"), icon: Notebook },
+  { view: "pomodoro", label: t("tabs.pomodoro"), icon: Timer },
+  { view: "clipboard", label: t("tabs.clipboard"), icon: CopyDocument },
+  { view: "quick", label: t("tabs.quick"), icon: MagicStick },
+  { view: "settings", label: t("tabs.settings"), icon: Setting },
+]);
 </script>
 
 <template>
   <div class="panel-card">
     <div class="panel-header">
       <span class="panel-title">Desk Pet</span>
-      <el-tooltip content="收起面板" placement="bottom">
+      <el-tooltip :content="t('panel.collapse')" placement="bottom">
         <button class="icon-btn" @click="ui.collapse()">
           <el-icon :size="14"><Minus /></el-icon>
         </button>
@@ -73,7 +76,7 @@ const tabs: Array<{ view: PanelView; label: string; icon: Component }> = [
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 12px 4px 72px;
+  padding: 10px 12px 4px 64px;
   min-height: 32px;
 }
 
@@ -87,7 +90,7 @@ const tabs: Array<{ view: PanelView; label: string; icon: Component }> = [
 .panel-tabs {
   display: flex;
   gap: 4px;
-  padding: 0 12px 8px 72px;
+  padding: 0 12px 8px 64px;
   border-bottom: 1px solid #eef0f3;
 }
 

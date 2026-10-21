@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { useI18n } from "vue-i18n";
 import { Refresh, VideoPause, VideoPlay } from "@element-plus/icons-vue";
-import { MODE_LABELS, usePomodoroStore, type PomoMode } from "@/stores/pomodoro";
+import { usePomodoroStore, type PomoMode } from "@/stores/pomodoro";
 
+const { t } = useI18n();
 const store = usePomodoroStore();
 const modes: PomoMode[] = ["focus", "short", "long"];
 </script>
@@ -9,8 +11,8 @@ const modes: PomoMode[] = ["focus", "short", "long"];
 <template>
   <div class="pomo-view">
     <div class="view-toolbar">
-      <span class="toolbar-title">番茄钟</span>
-      <span class="pomo-count">已完成专注 {{ store.focusDone }} 次</span>
+      <span class="toolbar-title">{{ t("pomodoro.title") }}</span>
+      <span class="pomo-count">{{ t("pomodoro.focusCount", { n: store.focusDone }) }}</span>
     </div>
     <div class="pomo-main">
       <div class="pomo-mode">
@@ -21,7 +23,7 @@ const modes: PomoMode[] = ["focus", "short", "long"];
           :class="{ active: store.mode === m }"
           @click="store.setMode(m)"
         >
-          {{ MODE_LABELS[m] }}
+          {{ t(`pomodoro.mode.${m}`) }}
         </button>
       </div>
       <div class="pomo-time" :class="{ running: store.running }">{{ store.display }}</div>
@@ -34,12 +36,14 @@ const modes: PomoMode[] = ["focus", "short", "long"];
           :icon="VideoPlay"
           @click="store.start()"
         >
-          开始
+          {{ t("pomodoro.start") }}
         </el-button>
         <el-button v-else type="warning" round size="small" :icon="VideoPause" @click="store.pause()">
-          暂停
+          {{ t("pomodoro.pause") }}
         </el-button>
-        <el-button round size="small" :icon="Refresh" @click="store.reset()">重置</el-button>
+        <el-button round size="small" :icon="Refresh" @click="store.reset()">
+          {{ t("pomodoro.reset") }}
+        </el-button>
       </div>
     </div>
   </div>

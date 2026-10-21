@@ -5,11 +5,11 @@ import {
   requestPermission,
   sendNotification,
 } from "@tauri-apps/plugin-notification";
+import { i18n } from "@/i18n";
 
 export type PomoMode = "focus" | "short" | "long";
 
 export const MODE_MINUTES: Record<PomoMode, number> = { focus: 25, short: 5, long: 15 };
-export const MODE_LABELS: Record<PomoMode, string> = { focus: "专注", short: "短休息", long: "长休息" };
 
 async function notify(title: string, body: string) {
   try {
@@ -82,13 +82,14 @@ export const usePomodoroStore = defineStore("pomodoro", () => {
 
   function finish() {
     running.value = false;
+    const t = i18n.global.t;
     if (mode.value === "focus") {
       focusDone.value += 1;
       const next: PomoMode = focusDone.value % 4 === 0 ? "long" : "short";
-      void notify("番茄钟", "专注结束，休息一下吧！");
+      void notify(t("pomodoro.notifTitle"), t("pomodoro.notifFocusDone"));
       setMode(next);
     } else {
-      void notify("番茄钟", "休息结束，开始新的专注！");
+      void notify(t("pomodoro.notifTitle"), t("pomodoro.notifBreakDone"));
       setMode("focus");
     }
   }

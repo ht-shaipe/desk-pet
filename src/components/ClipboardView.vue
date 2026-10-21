@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import { useI18n } from "vue-i18n";
 import { ElMessage } from "element-plus";
 import { Delete, Search } from "@element-plus/icons-vue";
 import { useClipboardStore } from "@/stores/clipboard";
 
+const { t } = useI18n();
 const store = useClipboardStore();
 const keyword = ref("");
 
@@ -19,50 +21,50 @@ function timeText(ts: number): string {
   const diff = Date.now() - ts;
   const min = Math.floor(diff / 60000);
   if (min < 1) {
-    return "刚刚";
+    return t("clipboard.justNow");
   }
   if (min < 60) {
-    return `${min} 分钟前`;
+    return t("clipboard.minutesAgo", { n: min });
   }
   const hour = Math.floor(min / 60);
   if (hour < 24) {
-    return `${hour} 小时前`;
+    return t("clipboard.hoursAgo", { n: hour });
   }
-  return `${Math.floor(hour / 24)} 天前`;
+  return t("clipboard.daysAgo", { n: Math.floor(hour / 24) });
 }
 
 async function onCopy(text: string) {
   try {
     await store.copy(text);
-    ElMessage.success("已复制到剪贴板");
+    ElMessage.success(t("clipboard.copied"));
   } catch (e) {
-    ElMessage.error(`复制失败: ${String(e)}`);
+    ElMessage.error(t("clipboard.copyFail", { err: String(e) }));
   }
 }
 
 async function onClear() {
   await store.clearAll();
-  ElMessage.success("已清空");
+  ElMessage.success(t("clipboard.cleared"));
 }
 </script>
 
 <template>
   <div class="clip-view">
     <div class="view-toolbar">
-      <el-input v-model="keyword" size="small" clearable placeholder="搜索剪贴板" :prefix-icon="Search" />
+      <el-input v-model="keyword" size="small" clearable :placeholder="t('clipboard.searchPh')" :prefix-icon="Search" />
       <el-popconfirm
-        title="确定清空全部历史？"
-        confirm-button-text="清空"
-        cancel-button-text="取消"
+        :title="t('clipboard.clearTitle')"
+        :confirm-button-text="t('clipboard.clear')"
+        :cancel-button-text="t('common.cancel')"
         @confirm="onClear"
       >
         <template #reference>
-          <el-button size="small" text type="danger">清空</el-button>
+          <el-button size="small" text type="danger">{{ t("clipboard.clear") }}</el-button>
         </template>
       </el-popconfirm>
     </div>
     <el-scrollbar class="view-scroll">
-      <el-empty v-if="filtered.length === 0" description="暂无剪贴板记录，复制点内容试试" :image-size="60" />
+      <el-empty v-if="filtered.length === 0" :description="t('clipboard.empty')" :image-size="60" />
       <div
         v-for="entry in filtered"
         :key="entry.id"
@@ -72,7 +74,7 @@ async function onClear() {
         <div class="clip-text">{{ entry.text }}</div>
         <div class="clip-meta">
           <span>{{ timeText(entry.updated_at) }}</span>
-          <span class="clip-delete" title="删除" @click.stop="store.remove(entry.id)">
+          <span class="clip-delete" :title="t('common.delete')" @click.stop="store.remove(entry.id)">
             <el-icon :size="12"><Delete /></el-icon>
           </span>
         </div>

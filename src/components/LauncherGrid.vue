@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from "vue";
+import { useI18n } from "vue-i18n";
 import { ElMessage } from "element-plus";
 import { Delete, EditPen, Plus, Setting } from "@element-plus/icons-vue";
 import { launchItem } from "@/api";
@@ -7,6 +8,7 @@ import { useLauncherStore } from "@/stores/launcher";
 import { useConfigStore } from "@/stores/config";
 import type { LaunchType, LauncherItem } from "@/types";
 
+const { t } = useI18n();
 const store = useLauncherStore();
 const config = useConfigStore();
 const editMode = ref(false);
@@ -26,21 +28,21 @@ function emptyForm(): LauncherItem {
 
 const form = reactive<LauncherItem>(emptyForm());
 
-const typeOptions: Array<{ label: string; value: LaunchType }> = [
-  { label: "应用", value: "app" },
-  { label: "网址", value: "url" },
-  { label: "命令", value: "command" },
-];
+const typeOptions = computed<Array<{ label: string; value: LaunchType }>>(() => [
+  { label: t("launcher.typeApp"), value: "app" },
+  { label: t("launcher.typeUrl"), value: "url" },
+  { label: t("launcher.typeCmd"), value: "command" },
+]);
 
 const valuePlaceholder = computed(() => {
   const mac = config.platform !== "windows";
   switch (form.item_type) {
     case "url":
-      return "https://github.com";
+      return t("launcher.ph.url");
     case "command":
-      return mac ? "shell 命令，如 ls -la" : "cmd 命令，如 dir";
+      return mac ? t("launcher.ph.cmdMac") : t("launcher.ph.cmdWin");
     default:
-      return mac ? "应用名，如 Safari、Terminal" : "程序路径，如 C:\\Windows\\notepad.exe";
+      return mac ? t("launcher.ph.appMac") : t("launcher.ph.appWin");
   }
 });
 
@@ -51,7 +53,7 @@ async function onLaunch(item: LauncherItem) {
   try {
     await launchItem(item);
   } catch (e) {
-    ElMessage.error(`启动失败: ${String(e)}`);
+    ElMessage.error(t("launcher.launchFail", { err: String(e) }));
   }
 }
 
@@ -69,12 +71,12 @@ function openEdit(item: LauncherItem) {
 
 function confirmDialog() {
   if (!form.name.trim() || !form.value.trim()) {
-    ElMessage.warning("名称和内容不能为空");
+    ElMessage.warning(t("launcher.emptyWarn"));
     return;
   }
   if (editingId.value) {
     store.updateItem({ ...form, id: editingId.value });
-    ElMessage.success("已保存");
+    ElMessage.success(t("common.saved"));
   } else {
     store.addItem({
       ...form,
@@ -82,7 +84,7 @@ function confirmDialog() {
       name: form.name.trim(),
       value: form.value.trim(),
     });
-    ElMessage.success("已添加");
+    ElMessage.success(t("common.added"));
   }
   dialogVisible.value = false;
 }
@@ -91,12 +93,12 @@ function confirmDialog() {
 <template>
   <div class="launch-view">
     <div class="view-toolbar">
-      <span class="toolbar-title">应用启动器</span>
+      <span class="toolbar-title">{{ t("launcher.title") }}</span>
       <el-button v-if="!editMode" size="small" text :icon="Setting" @click="editMode = true">
-        管理
+        {{ t("launcher.manage") }}
       </el-button>
       <el-button v-else size="small" text type="primary" @click="editMode = false">
-        完成
+        {{ t("launcher.done") }}
       </el-button>
     </div>
     <el-scrollbar class="view-scroll">
@@ -119,48 +121,48 @@ function confirmDialog() {
           <span class="item-avatar add-avatar">
             <el-icon :size="18"><Plus /></el-icon>
           </span>
-          <span class="item-name">添加</span>
+          <span class="item-name">{{ t("launcher.add") }}</span>
         </div>
       </div>
       <el-empty
         v-if="store.items.length === 0 && !editMode"
-        description="还没有启动项，点击「管理」添加"
+        :description="t('launcher.empty')"
         :image-size="60"
       />
       <div v-if="editMode" class="edit-hint">
         <el-icon :size="12"><EditPen /></el-icon>
-        点击条目编辑，角标删除
+        {{ t("launcher.editHint") }}
       </div>
     </el-scrollbar>
 
     <el-dialog
       v-model="dialogVisible"
-      :title="editingId ? '编辑启动项' : '添加启动项'"
+      :title="editingId ? t('launcher.editTitle') : t('launcher.addTitle')"
       width="300"
       append-to-body
     >
       <el-form label-position="top" size="small">
-        <el-form-item label="名称">
-          <el-input v-model="form.name" placeholder="如 GitHub" maxlength="20" />
+        <el-form-item :label="t('launcher.name')">
+          <el-input v-model="form.name" :placeholder="t('launcher.namePh')" maxlength="20" />
         </el-form-item>
-        <el-form-item label="类型">
+        <el-form-item :label="t('launcher.type')">
           <el-select v-model="form.item_type">
             <el-option v-for="opt in typeOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
           </el-select>
         </el-form-item>
-        <el-form-item label="内容">
+        <el-form-item :label="t('launcher.value')">
           <el-input v-model="form.value" :placeholder="valuePlaceholder" />
         </el-form-item>
-        <el-form-item label="图标（Emoji 或单字）">
-          <el-input v-model="form.icon" maxlength="2" placeholder="留空则取名称首字" />
+        <el-form-item :label="t('launcher.iconLabel')">
+          <el-input v-model="form.icon" maxlength="2" :placeholder="t('launcher.iconPh')" />
         </el-form-item>
-        <el-form-item label="颜色">
+        <el-form-item :label="t('launcher.color')">
           <el-color-picker v-model="form.color" />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button size="small" @click="dialogVisible = false">取消</el-button>
-        <el-button size="small" type="primary" @click="confirmDialog">确定</el-button>
+        <el-button size="small" @click="dialogVisible = false">{{ t("common.cancel") }}</el-button>
+        <el-button size="small" type="primary" @click="confirmDialog">{{ t("common.confirm") }}</el-button>
       </template>
     </el-dialog>
   </div>

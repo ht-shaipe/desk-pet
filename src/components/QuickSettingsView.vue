@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import type { Component } from "vue";
+import { computed } from "vue";
+import { useI18n } from "vue-i18n";
 import { ElMessage } from "element-plus";
 import {
   Bell,
@@ -14,6 +16,7 @@ import {
 import { quickAction } from "@/api";
 import { useConfigStore } from "@/stores/config";
 
+const { t } = useI18n();
 const config = useConfigStore();
 
 interface QuickItem {
@@ -23,18 +26,20 @@ interface QuickItem {
   macOnly?: boolean;
 }
 
-const actions: QuickItem[] = [
-  { action: "dark-mode", label: "深浅模式", icon: Moon, macOnly: true },
-  { action: "mute", label: "静音切换", icon: Mute, macOnly: true },
-  { action: "lock", label: "锁屏", icon: Lock },
-  { action: "sleep", label: "睡眠", icon: MoonNight },
-  { action: "open-settings:main", label: "系统设置", icon: Setting },
-  { action: "open-settings:sound", label: "声音设置", icon: Bell },
-  { action: "open-settings:display", label: "显示设置", icon: Monitor },
-  { action: "open-settings:network", label: "网络设置", icon: Connection },
-];
+const actions = computed<QuickItem[]>(() => [
+  { action: "dark-mode", label: t("quick.darkMode"), icon: Moon, macOnly: true },
+  { action: "mute", label: t("quick.mute"), icon: Mute, macOnly: true },
+  { action: "lock", label: t("quick.lock"), icon: Lock },
+  { action: "sleep", label: t("quick.sleep"), icon: MoonNight },
+  { action: "open-settings:main", label: t("quick.sysSettings"), icon: Setting },
+  { action: "open-settings:sound", label: t("quick.sound"), icon: Bell },
+  { action: "open-settings:display", label: t("quick.display"), icon: Monitor },
+  { action: "open-settings:network", label: t("quick.network"), icon: Connection },
+]);
 
-const visible = actions.filter((a) => !a.macOnly || config.platform === "macos");
+const visible = computed(() =>
+  actions.value.filter((a) => !a.macOnly || config.platform === "macos")
+);
 
 async function onAction(item: QuickItem) {
   try {
@@ -48,7 +53,7 @@ async function onAction(item: QuickItem) {
 <template>
   <div class="quick-view">
     <div class="view-toolbar">
-      <span class="toolbar-title">快捷操作</span>
+      <span class="toolbar-title">{{ t("quick.title") }}</span>
     </div>
     <div class="quick-grid">
       <button v-for="item in visible" :key="item.action" class="quick-item" @click="onAction(item)">

@@ -29,10 +29,24 @@ pub fn run() {
             commands::system::get_platform,
         ])
         .setup(|app| {
-            tray::create_tray(app.handle())?;
-            commands::clipboard::start_poll(app.handle().clone());
+            use commands::config::read_json_or_default;
+            use tauri::Listener;
 
-            app.handle().plugin(
+            let handle = app.handle();
+            let settings = read_json_or_default::<commands::config::AppSettings>(handle, "settings.json");
+            let locale = settings.locale.unwrap_or_else(|| "zh-CN".to_string());
+            tray::create_tray(handle, &locale)?;
+            commands::clipboard::start_poll(handle.clone());
+
+            // 界面语言切换时重建托盘菜单
+            let h = handle.clone();
+            app.listen("i18n://locale-changed", move |event| {
+                if let Ok(locale) = serde_json::from_str::<String>(event.payload()) {
+                    let _ = tray::rebuild_tray(&h, &locale);
+                }
+            });
+
+            handle.plugin(
                 tauri_plugin_global_shortcut::Builder::new()
                     .with_handler(|app, _shortcut, event| {
                         if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {

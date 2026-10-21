@@ -8,6 +8,8 @@ pub struct AppSettings {
     pub pet_x: Option<i32>,
     pub pet_y: Option<i32>,
     pub always_on_top: bool,
+    #[serde(default)]
+    pub locale: Option<String>,
 }
 
 impl Default for AppSettings {
@@ -16,6 +18,7 @@ impl Default for AppSettings {
             pet_x: None,
             pet_y: None,
             always_on_top: true,
+            locale: None,
         }
     }
 }

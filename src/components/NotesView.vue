@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { useI18n } from "vue-i18n";
 import { Delete, Plus } from "@element-plus/icons-vue";
 import { useNotesStore } from "@/stores/notes";
 
+const { t } = useI18n();
 const store = useNotesStore();
 const palette = ["#fef3c7", "#dcfce7", "#dbeafe", "#fce7f3", "#ede9fe"];
 </script>
@@ -9,13 +11,13 @@ const palette = ["#fef3c7", "#dcfce7", "#dbeafe", "#fce7f3", "#ede9fe"];
 <template>
   <div class="notes-view">
     <div class="view-toolbar">
-      <span class="toolbar-title">便签</span>
+      <span class="toolbar-title">{{ t("notes.title") }}</span>
       <el-button size="small" text type="primary" :icon="Plus" @click="store.addNote()">
-        新便签
+        {{ t("notes.new") }}
       </el-button>
     </div>
     <el-scrollbar class="view-scroll">
-      <el-empty v-if="store.notes.length === 0" description="暂无便签" :image-size="60" />
+      <el-empty v-if="store.notes.length === 0" :description="t('notes.empty')" :image-size="60" />
       <div v-for="note in store.notes" :key="note.id" class="note-card" :style="{ background: note.color }">
         <div class="note-actions">
           <div class="note-colors">
@@ -34,7 +36,7 @@ const palette = ["#fef3c7", "#dcfce7", "#dbeafe", "#fce7f3", "#ede9fe"];
           :model-value="note.content"
           type="textarea"
           :autosize="{ minRows: 2, maxRows: 6 }"
-          placeholder="记录点什么..."
+          :placeholder="t('notes.ph')"
           @update:model-value="(v: string) => store.updateNote(note.id, v)"
         />
       </div>
