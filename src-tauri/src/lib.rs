@@ -27,6 +27,9 @@ pub fn run() {
             commands::clipboard::copy_to_clipboard,
             commands::system::quick_action,
             commands::system::get_platform,
+            commands::toolbox::get_clipboard_image,
+            commands::toolbox::set_clipboard_image,
+            commands::toolbox::save_qr_png,
         ])
         .setup(|app| {
             use commands::config::read_json_or_default;

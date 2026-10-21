@@ -4,6 +4,8 @@ import { PhysicalPosition, PhysicalSize } from "@tauri-apps/api/dpi";
 export const PET_SIZE = 72;
 export const PANEL_WIDTH = 360;
 export const PANEL_HEIGHT = 560;
+const MIN_PANEL_WIDTH = 300;
+const MIN_PANEL_HEIGHT = 420;
 
 const win = getCurrentWindow();
 
@@ -12,7 +14,18 @@ interface SavedPos {
   y: number;
 }
 
+interface SavedSize {
+  width: number;
+  height: number;
+}
+
 let savedPetPos: SavedPos | null = null;
+let savedPanelSize: SavedSize | null = null;
+
+/** 展开态记录用户手动调整后的面板尺寸（物理像素），下次展开沿用。 */
+export function rememberPanelSize(size: SavedSize): void {
+  savedPanelSize = size;
+}
 
 async function scaleFactor(): Promise<number> {
   const sf = await win.scaleFactor();
@@ -50,14 +63,14 @@ export async function initWindowPosition(
   }
 }
 
-/** 折叠态 -> 展开态：窗口放大为面板尺寸，屏幕边缘时自动钳制位置。 */
+/** 折叠态 -> 展开态：窗口放大为面板尺寸（沿用用户上次调整的大小），屏幕边缘时自动钳制位置。 */
 export async function expandWindow(): Promise<void> {
   const sf = await scaleFactor();
   const pos = await win.outerPosition();
   savedPetPos = { x: pos.x, y: pos.y };
 
-  const w = Math.round(PANEL_WIDTH * sf);
-  const h = Math.round(PANEL_HEIGHT * sf);
+  const w = savedPanelSize?.width ?? Math.round(PANEL_WIDTH * sf);
+  const h = savedPanelSize?.height ?? Math.round(PANEL_HEIGHT * sf);
   let x = pos.x;
   let y = pos.y;
 
@@ -71,12 +84,18 @@ export async function expandWindow(): Promise<void> {
 
   await win.setPosition(new PhysicalPosition(x, y));
   await win.setSize(new PhysicalSize(w, h));
+  await win.setMinSize(
+    new PhysicalSize(Math.round(MIN_PANEL_WIDTH * sf), Math.round(MIN_PANEL_HEIGHT * sf))
+  );
+  await win.setResizable(true);
 }
 
-/** 展开态 -> 折叠态：恢复展开前记录的精灵位置。 */
+/** 展开态 -> 折叠态：恢复展开前记录的精灵位置，并还原为不可调整的小窗。 */
 export async function collapseWindow(): Promise<void> {
   const sf = await scaleFactor();
   const size = Math.round(PET_SIZE * sf);
+  await win.setMinSize(null);
+  await win.setResizable(false);
   if (savedPetPos) {
     await win.setPosition(new PhysicalPosition(savedPetPos.x, savedPetPos.y));
   }

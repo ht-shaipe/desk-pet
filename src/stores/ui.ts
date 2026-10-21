@@ -1,7 +1,7 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
 
-export type PanelView = "launcher" | "notes" | "pomodoro" | "clipboard" | "quick" | "settings";
+export type PanelView = "launcher" | "notes" | "pomodoro" | "clipboard" | "toolbox" | "quick" | "settings";
 
 export const useUiStore = defineStore("ui", () => {
   const expanded = ref(false);

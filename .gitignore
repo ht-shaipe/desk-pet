@@ -24,5 +24,7 @@ dist-ssr
 *.sw?
 .deveco
 .vscode
+.codeartsdoer
+.arts
 
 *.lock

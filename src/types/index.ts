@@ -32,3 +32,9 @@ export interface ClipEntry {
   text: string;
   updated_at: number;
 }
+
+export interface ImagePayload {
+  width: number;
+  height: number;
+  rgba: number[];
+}

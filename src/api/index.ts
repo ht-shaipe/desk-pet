@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSettings, ClipEntry, LauncherConfig, LauncherItem, Note } from "@/types";
+import type { AppSettings, ClipEntry, ImagePayload, LauncherConfig, LauncherItem, Note } from "@/types";
 
 export const getSettings = () => invoke<AppSettings>("get_settings");
 export const saveSettings = (settings: AppSettings) => invoke<void>("save_settings", { settings });
@@ -14,3 +14,7 @@ export const deleteClipboardEntry = (id: string) => invoke<void>("delete_clipboa
 export const copyToClipboard = (text: string) => invoke<void>("copy_to_clipboard", { text });
 export const quickAction = (action: string) => invoke<void>("quick_action", { action });
 export const getPlatform = () => invoke<string>("get_platform");
+export const getClipboardImage = () => invoke<ImagePayload | null>("get_clipboard_image");
+export const setClipboardImage = (payload: ImagePayload) =>
+  invoke<void>("set_clipboard_image", { payload });
+export const saveQrPng = (dataUrl: string) => invoke<string>("save_qr_png", { dataUrl });

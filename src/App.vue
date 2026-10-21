@@ -9,17 +9,23 @@ import { useConfigStore } from "@/stores/config";
 import { useClipboardStore } from "@/stores/clipboard";
 import { useLauncherStore } from "@/stores/launcher";
 import { useNotesStore } from "@/stores/notes";
-import { collapseWindow, expandWindow } from "@/utils/windowCtl";
+import { collapseWindow, expandWindow, rememberPanelSize } from "@/utils/windowCtl";
 
 const ui = useUiStore();
 const config = useConfigStore();
 const win = getCurrentWindow();
 
 let unlistenMoved: UnlistenFn | undefined;
+let unlistenResized: UnlistenFn | undefined;
 
 onMounted(async () => {
   await config.init();
   unlistenMoved = await win.onMoved((event) => config.onWindowMoved(event.payload));
+  unlistenResized = await win.onResized((event) => {
+    if (ui.expanded) {
+      rememberPanelSize({ width: event.payload.width, height: event.payload.height });
+    }
+  });
   void useClipboardStore().init();
   void useLauncherStore().init();
   void useNotesStore().init();
@@ -27,6 +33,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   unlistenMoved?.();
+  unlistenResized?.();
 });
 
 watch(

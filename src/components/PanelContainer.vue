@@ -2,12 +2,13 @@
 import type { Component } from "vue";
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
-import { CopyDocument, Grid, MagicStick, Minus, Notebook, Setting, Timer } from "@element-plus/icons-vue";
+import { CopyDocument, Grid, MagicStick, Minus, Notebook, Setting, Suitcase, Timer } from "@element-plus/icons-vue";
 import { useUiStore, type PanelView } from "@/stores/ui";
 import LauncherGrid from "./LauncherGrid.vue";
 import NotesView from "./NotesView.vue";
 import PomodoroView from "./PomodoroView.vue";
 import ClipboardView from "./ClipboardView.vue";
+import ToolboxView from "./ToolboxView.vue";
 import QuickSettingsView from "./QuickSettingsView.vue";
 import SettingsView from "./SettingsView.vue";
 
@@ -19,6 +20,7 @@ const tabs = computed<Array<{ view: PanelView; label: string; icon: Component }>
   { view: "notes", label: t("tabs.notes"), icon: Notebook },
   { view: "pomodoro", label: t("tabs.pomodoro"), icon: Timer },
   { view: "clipboard", label: t("tabs.clipboard"), icon: CopyDocument },
+  { view: "toolbox", label: t("tabs.toolbox"), icon: Suitcase },
   { view: "quick", label: t("tabs.quick"), icon: MagicStick },
   { view: "settings", label: t("tabs.settings"), icon: Setting },
 ]);
@@ -50,6 +52,7 @@ const tabs = computed<Array<{ view: PanelView; label: string; icon: Component }>
       <NotesView v-else-if="ui.activeView === 'notes'" />
       <PomodoroView v-else-if="ui.activeView === 'pomodoro'" />
       <ClipboardView v-else-if="ui.activeView === 'clipboard'" />
+      <ToolboxView v-else-if="ui.activeView === 'toolbox'" />
       <QuickSettingsView v-else-if="ui.activeView === 'quick'" />
       <SettingsView v-else />
     </div>

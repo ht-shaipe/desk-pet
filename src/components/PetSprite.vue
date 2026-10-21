@@ -28,8 +28,8 @@ const rootClass = computed(() => ({
   position: absolute;
   top: 0;
   left: 0;
-  width: 72px;
-  height: 72px;
+  width: 68px;
+  height: 68px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -40,7 +40,7 @@ const rootClass = computed(() => ({
 }
 
 .pet-wrap.expanded {
-  transform: scale(0.82);
+  transform: translateY(8px) scale(0.82);
   transform-origin: top left;
 }
 
@@ -49,8 +49,8 @@ const rootClass = computed(() => ({
 }
 
 .pet-img {
-  width: 54px;
-  height: 54px;
+  width: 60px;
+  height: 60px;
   object-fit: cover;
   border-radius: 50%;
   filter: drop-shadow(0 2px 6px rgba(31, 41, 55, 0.12));
@@ -67,7 +67,7 @@ const rootClass = computed(() => ({
 
 .pet-wrap.dragging .pet-img {
   animation: none;
-  transform: scale(0.94) rotate(-8deg);
+  transform: scale(0.94);
 }
 
 @keyframes pet-breathe {
