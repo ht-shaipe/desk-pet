@@ -42,7 +42,7 @@ npm run tauri build  # 打包发布
 - 透明窗口依赖 macOS 私有 API（`tauri.conf.json` 的 `macOSPrivateApi` + Cargo 的
   `macos-private-api` feature），因此**不能上架 Mac App Store**，个人使用无影响
 - 拖拽与点击判定：Pointer 事件 + 4px 位移阈值 + 原生 `startDragging`，避免点击误触为拖拽
-- 展开/收起采用**单窗口编程式 resize**（120×120 ⇄ 360×560），无需多窗口同步
+- 展开/收起采用**单窗口编程式 resize**（96×96 ⇄ 360×560），无需多窗口同步
 - 数据持久化：serde JSON，位于 `~/Library/Application Support/com.deskpet.desktop/`
   （Windows 为 `%APPDATA%\com.deskpet.desktop\`）
 - 剪贴板：Rust 后台线程每秒轮询（arboard），去重后经 Tauri 事件推送给前端

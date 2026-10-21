@@ -19,12 +19,14 @@ const rootClass = computed(() => ({
 
 <template>
   <div class="pet-wrap" :class="rootClass" v-bind="dragHandlers">
-    <div class="pet-body">
-      <div class="pet-eye left"></div>
-      <div class="pet-eye right"></div>
-      <div class="pet-mouth"></div>
-      <div class="pet-cheek left"></div>
-      <div class="pet-cheek right"></div>
+    <div class="pet-scale">
+      <div class="pet-body">
+        <div class="pet-eye left"></div>
+        <div class="pet-eye right"></div>
+        <div class="pet-mouth"></div>
+        <div class="pet-cheek left"></div>
+        <div class="pet-cheek right"></div>
+      </div>
     </div>
   </div>
 </template>
@@ -34,8 +36,8 @@ const rootClass = computed(() => ({
   position: absolute;
   top: 0;
   left: 0;
-  width: 120px;
-  height: 120px;
+  width: 96px;
+  height: 96px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -43,6 +45,17 @@ const rootClass = computed(() => ({
   z-index: 20;
   touch-action: none;
   transition: transform 0.2s ease;
+}
+
+/* 内部保持 120px 坐标系绘制，整体缩放到窗口尺寸 */
+.pet-scale {
+  width: 120px;
+  height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: scale(0.8);
+  transform-origin: center;
 }
 
 .pet-wrap.expanded {
