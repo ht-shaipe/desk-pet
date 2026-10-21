@@ -2,6 +2,54 @@
   box-sizing: border-box;
 }
 
+/* ---------- 主题变量（html.dark 由主题切换驱动） ---------- */
+
+:root {
+  --dp-panel-bg: rgba(248, 249, 251, 0.97);
+  --dp-panel-border: rgba(31, 41, 55, 0.08);
+  --dp-panel-shadow: 0 2px 8px rgba(31, 41, 55, 0.08), 0 8px 24px rgba(31, 41, 55, 0.06);
+  --dp-card-bg: #ffffff;
+  --dp-card-border: #eef0f3;
+  --dp-card-hover-border: #c6e2ff;
+  --dp-card-hover-shadow: 0 2px 8px rgba(64, 158, 255, 0.12);
+  --dp-card-shadow: 0 2px 8px rgba(31, 41, 55, 0.08);
+  --dp-hover-bg: #eef1f5;
+  --dp-btn-bg: #eceef1;
+  --dp-btn-hover-bg: #dde1e6;
+  --dp-divider: #eef0f3;
+  --dp-text-primary: #1f2937;
+  --dp-text-secondary: #374151;
+  --dp-text-muted: #6b7280;
+  --dp-text-tertiary: #9ca3af;
+  --dp-accent: #409eff;
+  --dp-danger-soft: #fef0f0;
+  --dp-note-input-bg: rgba(255, 255, 255, 0.65);
+  --dp-dot-border: rgba(31, 41, 55, 0.15);
+}
+
+html.dark {
+  --dp-panel-bg: rgba(24, 27, 33, 0.97);
+  --dp-panel-border: rgba(255, 255, 255, 0.08);
+  --dp-panel-shadow: 0 2px 8px rgba(0, 0, 0, 0.35), 0 8px 24px rgba(0, 0, 0, 0.25);
+  --dp-card-bg: #262a31;
+  --dp-card-border: #343941;
+  --dp-card-hover-border: #3d5a7a;
+  --dp-card-hover-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --dp-card-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --dp-hover-bg: #2a2f37;
+  --dp-btn-bg: #30363f;
+  --dp-btn-hover-bg: #3a424d;
+  --dp-divider: #343941;
+  --dp-text-primary: #e5e7eb;
+  --dp-text-secondary: #cbd5e1;
+  --dp-text-muted: #9aa4b2;
+  --dp-text-tertiary: #6b7280;
+  --dp-accent: #4ba3ff;
+  --dp-danger-soft: rgba(245, 108, 108, 0.15);
+  --dp-note-input-bg: rgba(0, 0, 0, 0.25);
+  --dp-dot-border: rgba(255, 255, 255, 0.2);
+}
+
 html,
 body,
 #app {
@@ -17,7 +65,7 @@ body {
   font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", -apple-system,
     BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   font-size: 13px;
-  color: #1f2937;
+  color: var(--dp-text-primary);
   user-select: none;
   -webkit-user-select: none;
 }
@@ -42,7 +90,7 @@ body {
 .toolbar-title {
   font-size: 13px;
   font-weight: 600;
-  color: #374151;
+  color: var(--dp-text-secondary);
   margin-right: auto;
 }
 

@@ -3,12 +3,10 @@ use serde::{Deserialize, Serialize};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager};
 
-use super::config::{read_json, write_json};
 use crate::state::AppState;
 
 const MAX_ENTRIES: usize = 100;
 const MAX_CHARS: usize = 4000;
-const CLIPBOARD_FILE: &str = "clipboard.json";
 const POLL_INTERVAL_MS: u64 = 1000;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -40,7 +38,21 @@ fn persist(app: &AppHandle) -> Result<(), String> {
         .lock()
         .unwrap()
         .clone();
-    write_json(app, CLIPBOARD_FILE, &snapshot)
+    let state = app.state::<AppState>();
+    let conn = state.db.lock().unwrap();
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    tx.execute("DELETE FROM clipboard", [])
+        .map_err(|e| e.to_string())?;
+    {
+        let mut stmt = tx
+            .prepare("INSERT OR REPLACE INTO clipboard (id, text, updated_at) VALUES (?1, ?2, ?3)")
+            .map_err(|e| e.to_string())?;
+        for e in &snapshot {
+            stmt.execute(rusqlite::params![e.id, e.text, e.updated_at as i64])
+                .map_err(|e| e.to_string())?;
+        }
+    }
+    tx.commit().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -81,10 +93,29 @@ pub fn copy_to_clipboard(text: String) -> Result<(), String> {
 
 /// 启动剪贴板轮询线程：每秒读取一次系统剪贴板，捕获新文本并广播事件。
 pub fn start_poll(app: AppHandle) {
-    // 启动时载入持久化的历史
+    // 启动时载入持久化的历史（SQLite）
     {
-        let history: Vec<ClipEntry> = read_json(&app, CLIPBOARD_FILE).unwrap_or_default();
         let state = app.state::<AppState>();
+        let conn = state.db.lock().unwrap();
+        let history: Vec<ClipEntry> = {
+            let mut stmt = match conn
+                .prepare("SELECT id, text, updated_at FROM clipboard ORDER BY updated_at DESC")
+            {
+                Ok(s) => s,
+                Err(_) => return,
+            };
+            let rows = stmt.query_map([], |row| {
+                Ok(ClipEntry {
+                    id: row.get(0)?,
+                    text: row.get(1)?,
+                    updated_at: row.get::<_, i64>(2)? as u64,
+                })
+            });
+            match rows {
+                Ok(iter) => iter.filter_map(|r| r.ok()).collect(),
+                Err(_) => Vec::new(),
+            }
+        };
         *state.clipboard.lock().unwrap() = history;
     }
 

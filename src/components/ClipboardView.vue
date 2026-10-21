@@ -96,8 +96,8 @@ async function onClear() {
 }
 
 .clip-item {
-  background: #ffffff;
-  border: 1px solid #eef0f3;
+  background: var(--dp-card-bg);
+  border: 1px solid var(--dp-card-border);
   border-radius: 10px;
   padding: 8px 10px;
   margin-bottom: 8px;
@@ -106,13 +106,13 @@ async function onClear() {
 }
 
 .clip-item:hover {
-  border-color: #c6e2ff;
-  box-shadow: 0 2px 8px rgba(64, 158, 255, 0.12);
+  border-color: var(--dp-card-hover-border);
+  box-shadow: var(--dp-card-hover-shadow);
 }
 
 .clip-text {
   font-size: 12px;
-  color: #374151;
+  color: var(--dp-text-secondary);
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-all;
@@ -128,7 +128,7 @@ async function onClear() {
   justify-content: space-between;
   margin-top: 6px;
   font-size: 11px;
-  color: #9ca3af;
+  color: var(--dp-text-tertiary);
 }
 
 .clip-delete {
@@ -140,6 +140,6 @@ async function onClear() {
 
 .clip-delete:hover {
   color: #f56c6c;
-  background: #fef0f0;
+  background: var(--dp-danger-soft);
 }
 </style>

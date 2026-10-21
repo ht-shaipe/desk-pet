@@ -10,6 +10,21 @@ pub struct AppSettings {
     pub always_on_top: bool,
     #[serde(default)]
     pub locale: Option<String>,
+    /// light | dark，缺省视为 light
+    #[serde(default)]
+    pub theme: Option<String>,
+    /// 精灵图标显示大小（逻辑像素，32-64），缺省 48
+    #[serde(default)]
+    pub sprite_size: Option<u32>,
+    /// 主题色（#rrggbb），缺省用内置蓝色
+    #[serde(default)]
+    pub accent_color: Option<String>,
+    /// 远端账户 token（同步用，裸 Authorization 头）
+    #[serde(default)]
+    pub auth_token: Option<String>,
+    /// 已登录账户（手机号）
+    #[serde(default)]
+    pub auth_user: Option<String>,
 }
 
 impl Default for AppSettings {
@@ -19,6 +34,11 @@ impl Default for AppSettings {
             pet_y: None,
             always_on_top: true,
             locale: None,
+            theme: None,
+            sprite_size: None,
+            accent_color: None,
+            auth_token: None,
+            auth_user: None,
         }
     }
 }
@@ -82,10 +102,58 @@ pub fn save_settings(app: AppHandle, settings: AppSettings) -> Result<(), String
 
 #[tauri::command]
 pub fn get_launcher(app: AppHandle) -> LauncherConfig {
-    read_json_or_default(&app, "launcher.json")
+    let state = app.state::<crate::state::AppState>();
+    let conn = state.db.lock().unwrap();
+    let mut stmt = match conn.prepare(
+        "SELECT id, name, icon, item_type, value, color FROM launcher ORDER BY sort_order",
+    ) {
+        Ok(s) => s,
+        Err(_) => return LauncherConfig::default(),
+    };
+    let rows = stmt.query_map([], |row| {
+        Ok(LauncherItem {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            icon: row.get(2)?,
+            item_type: row.get(3)?,
+            value: row.get(4)?,
+            color: row.get(5)?,
+        })
+    });
+    match rows {
+        Ok(iter) => LauncherConfig {
+            items: iter.filter_map(|r| r.ok()).collect(),
+        },
+        Err(_) => LauncherConfig::default(),
+    }
 }
 
 #[tauri::command]
 pub fn save_launcher(app: AppHandle, config: LauncherConfig) -> Result<(), String> {
-    write_json(&app, "launcher.json", &config)
+    let state = app.state::<crate::state::AppState>();
+    let conn = state.db.lock().unwrap();
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    tx.execute("DELETE FROM launcher", [])
+        .map_err(|e| e.to_string())?;
+    {
+        let mut stmt = tx
+            .prepare(
+                "INSERT OR REPLACE INTO launcher (id, name, icon, item_type, value, color, sort_order)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            )
+            .map_err(|e| e.to_string())?;
+        for (i, item) in config.items.iter().enumerate() {
+            stmt.execute(rusqlite::params![
+                item.id,
+                item.name,
+                item.icon,
+                item.item_type,
+                item.value,
+                item.color,
+                i as i64
+            ])
+            .map_err(|e| e.to_string())?;
+        }
+    }
+    tx.commit().map_err(|e| e.to_string())
 }

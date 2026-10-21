@@ -8,6 +8,7 @@ import { useConfigStore } from "@/stores/config";
 const { t } = useI18n();
 const config = useConfigStore();
 const autostart = ref(false);
+const presetColors = ["#409eff", "#7265e6", "#67c23a", "#e6a23c", "#f56c6c", "#00a2ae", "#eb2f96"];
 
 onMounted(async () => {
   try {
@@ -23,6 +24,18 @@ async function onAlwaysOnTop(val: string | number | boolean) {
 
 async function onLocaleChange(val: string | number | boolean) {
   await config.setLocale(String(val));
+}
+
+async function onThemeChange(val: string | number | boolean) {
+  await config.setTheme(String(val));
+}
+
+async function onSpriteSizeChange(val: number | number[]) {
+  await config.setSpriteSize(Array.isArray(val) ? val[0] : val);
+}
+
+async function onAccentChange(val: string | null) {
+  await config.setAccentColor(val);
 }
 
 async function onAutostart(val: string | number | boolean) {
@@ -60,6 +73,58 @@ async function onAutostart(val: string | number | boolean) {
             <el-option label="中文" value="zh-CN" />
             <el-option label="English" value="en" />
           </el-select>
+        </div>
+        <div class="settings-row">
+          <div class="row-info">
+            <div class="row-title">{{ t("settings.theme") }}</div>
+            <div class="row-desc">{{ t("settings.themeDesc") }}</div>
+          </div>
+          <el-select
+            :model-value="config.settings.theme ?? 'light'"
+            size="small"
+            style="width: 120px"
+            @change="onThemeChange"
+          >
+            <el-option :label="t('settings.themeLight')" value="light" />
+            <el-option :label="t('settings.themeDark')" value="dark" />
+          </el-select>
+        </div>
+        <div class="settings-row">
+          <div class="row-info">
+            <div class="row-title">{{ t("settings.accent") }}</div>
+            <div class="row-desc">{{ t("settings.accentDesc") }}</div>
+          </div>
+          <div class="accent-picker">
+            <el-color-picker
+              :model-value="config.settings.accent_color ?? '#409eff'"
+              size="small"
+              :predefine="presetColors"
+              @change="onAccentChange"
+            />
+            <el-button
+              v-if="config.settings.accent_color"
+              size="small"
+              text
+              @click="onAccentChange(null)"
+            >
+              {{ t("settings.accentReset") }}
+            </el-button>
+          </div>
+        </div>
+        <div class="settings-row">
+          <div class="row-info">
+            <div class="row-title">{{ t("settings.spriteSize") }}</div>
+            <div class="row-desc">{{ t("settings.spriteSizeDesc") }}</div>
+          </div>
+          <el-slider
+            :model-value="config.settings.sprite_size ?? 48"
+            :min="32"
+            :max="64"
+            :step="2"
+            size="small"
+            style="width: 130px; --el-slider-height: 16px"
+            @change="onSpriteSizeChange"
+          />
         </div>
         <div class="settings-row">
           <div class="row-info">
@@ -125,22 +190,28 @@ async function onAutostart(val: string | number | boolean) {
 }
 
 .settings-row:hover {
-  background: #eef1f5;
+  background: var(--dp-hover-bg);
 }
 
 .row-info {
   margin-right: auto;
 }
 
+.accent-picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .row-title {
   font-size: 13px;
   font-weight: 500;
-  color: #1f2937;
+  color: var(--dp-text-primary);
 }
 
 .row-desc {
   font-size: 12px;
-  color: #9ca3af;
+  color: var(--dp-text-tertiary);
   margin-top: 2px;
 }
 </style>

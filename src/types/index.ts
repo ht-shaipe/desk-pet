@@ -1,8 +1,15 @@
+export type ThemeMode = "light" | "dark";
+
 export interface AppSettings {
   pet_x: number | null;
   pet_y: number | null;
   always_on_top: boolean;
   locale: string | null;
+  theme?: ThemeMode | null;
+  sprite_size?: number | null;
+  accent_color?: string | null;
+  auth_token?: string | null;
+  auth_user?: string | null;
 }
 
 export type LaunchType = "app" | "url" | "command";

@@ -8,11 +8,11 @@ pub fn run() {
             tray::show_main(app);
         }))
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
-        .manage(state::AppState::default())
         .invoke_handler(tauri::generate_handler![
             commands::config::get_settings,
             commands::config::save_settings,
@@ -33,9 +33,12 @@ pub fn run() {
         ])
         .setup(|app| {
             use commands::config::read_json_or_default;
-            use tauri::Listener;
+            use tauri::{Listener, Manager};
 
             let handle = app.handle();
+            let db = commands::db::init_db(handle)?;
+            handle.manage(state::AppState::new(db));
+
             let settings = read_json_or_default::<commands::config::AppSettings>(handle, "settings.json");
             let locale = settings.locale.unwrap_or_else(|| "zh-CN".to_string());
             tray::create_tray(handle, &locale)?;

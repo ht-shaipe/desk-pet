@@ -15,11 +15,22 @@ const rootClass = computed(() => ({
   dragging: config.windowMoving,
   expanded: ui.expanded,
 }));
+
+const spriteSize = computed(() => {
+  const size = config.settings.sprite_size;
+  return typeof size === "number" && size >= 32 && size <= 64 ? size : 48;
+});
 </script>
 
 <template>
   <div class="pet-wrap" :class="rootClass" v-bind="dragHandlers">
-    <img class="pet-img" src="/images/avatar.png" alt="pet" draggable="false" />
+    <img
+      class="pet-img"
+      :style="{ width: `${spriteSize}px`, height: `${spriteSize}px` }"
+      src="/images/avatar.png"
+      alt="pet"
+      draggable="false"
+    />
   </div>
 </template>
 
@@ -40,7 +51,7 @@ const rootClass = computed(() => ({
 }
 
 .pet-wrap.expanded {
-  transform: translateY(8px) scale(0.82);
+  transform: translateY(10px) scale(1.05);
   transform-origin: top left;
 }
 
@@ -49,12 +60,13 @@ const rootClass = computed(() => ({
 }
 
 .pet-img {
-  width: 60px;
-  height: 60px;
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
   object-fit: cover;
   border-radius: 50%;
-  filter: drop-shadow(0 2px 6px rgba(31, 41, 55, 0.12));
-  transition: transform 0.25s ease, filter 0.25s ease;
+  box-shadow: 0 2px 6px rgba(31, 41, 55, 0.12);
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
   animation: pet-breathe 3.2s ease-in-out infinite;
   user-select: none;
   -webkit-user-drag: none;
@@ -62,7 +74,7 @@ const rootClass = computed(() => ({
 }
 
 .pet-wrap:hover .pet-img {
-  filter: drop-shadow(0 4px 10px rgba(31, 41, 55, 0.16));
+  box-shadow: 0 4px 10px rgba(31, 41, 55, 0.16);
 }
 
 .pet-wrap.dragging .pet-img {

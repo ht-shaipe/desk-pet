@@ -2,7 +2,7 @@
 import type { Component } from "vue";
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
-import { CopyDocument, Grid, MagicStick, Minus, Notebook, Setting, Suitcase, Timer } from "@element-plus/icons-vue";
+import { CopyDocument, Grid, MagicStick, Minus, Notebook, Setting, Suitcase, Timer, User } from "@element-plus/icons-vue";
 import { useUiStore, type PanelView } from "@/stores/ui";
 import LauncherGrid from "./LauncherGrid.vue";
 import NotesView from "./NotesView.vue";
@@ -10,6 +10,7 @@ import PomodoroView from "./PomodoroView.vue";
 import ClipboardView from "./ClipboardView.vue";
 import ToolboxView from "./toolbox/ToolboxView.vue";
 import QuickSettingsView from "./QuickSettingsView.vue";
+import AccountView from "./AccountView.vue";
 import SettingsView from "./SettingsView.vue";
 
 const ui = useUiStore();
@@ -22,6 +23,7 @@ const tabs = computed<Array<{ view: PanelView; label: string; icon: Component }>
   { view: "clipboard", label: t("tabs.clipboard"), icon: CopyDocument },
   { view: "toolbox", label: t("tabs.toolbox"), icon: Suitcase },
   { view: "quick", label: t("tabs.quick"), icon: MagicStick },
+  { view: "account", label: t("tabs.account"), icon: User },
   { view: "settings", label: t("tabs.settings"), icon: Setting },
 ]);
 </script>
@@ -54,6 +56,7 @@ const tabs = computed<Array<{ view: PanelView; label: string; icon: Component }>
       <ClipboardView v-else-if="ui.activeView === 'clipboard'" />
       <ToolboxView v-else-if="ui.activeView === 'toolbox'" />
       <QuickSettingsView v-else-if="ui.activeView === 'quick'" />
+      <AccountView v-else-if="ui.activeView === 'account'" />
       <SettingsView v-else />
     </div>
   </div>
@@ -62,13 +65,14 @@ const tabs = computed<Array<{ view: PanelView; label: string; icon: Component }>
 <style scoped>
 .panel-card {
   position: absolute;
-  left: 4px;
-  right: 4px;
+  left: 18px;
+  right: 18px;
   top: 52px;
-  bottom: 4px;
-  background: rgba(248, 249, 251, 0.97);
+  bottom: 18px;
+  background: var(--dp-panel-bg);
+  border: 1px solid var(--dp-panel-border);
   border-radius: 16px;
-  box-shadow: 0 16px 48px rgba(31, 41, 55, 0.22);
+  box-shadow: var(--dp-panel-shadow);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -86,7 +90,7 @@ const tabs = computed<Array<{ view: PanelView; label: string; icon: Component }>
 .panel-title {
   font-size: 13px;
   font-weight: 600;
-  color: #6b7280;
+  color: var(--dp-text-muted);
   margin-right: auto;
 }
 
@@ -94,13 +98,13 @@ const tabs = computed<Array<{ view: PanelView; label: string; icon: Component }>
   display: flex;
   gap: 4px;
   padding: 0 12px 8px 64px;
-  border-bottom: 1px solid #eef0f3;
+  border-bottom: 1px solid var(--dp-divider);
 }
 
 .icon-btn {
   border: none;
-  background: #eceef1;
-  color: #4b5563;
+  background: var(--dp-btn-bg);
+  color: var(--dp-text-muted);
   width: 26px;
   height: 26px;
   border-radius: 8px;
@@ -113,7 +117,7 @@ const tabs = computed<Array<{ view: PanelView; label: string; icon: Component }>
 }
 
 .icon-btn:hover {
-  background: #dde1e6;
+  background: var(--dp-btn-hover-bg);
 }
 
 .tab-btn {
@@ -122,7 +126,7 @@ const tabs = computed<Array<{ view: PanelView; label: string; icon: Component }>
 }
 
 .tab-btn.active {
-  background: #409eff;
+  background: var(--dp-accent);
   color: #ffffff;
 }
 

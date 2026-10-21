@@ -18,7 +18,7 @@ const palette = ["#fef3c7", "#dcfce7", "#dbeafe", "#fce7f3", "#ede9fe"];
     </div>
     <el-scrollbar class="view-scroll">
       <el-empty v-if="store.notes.length === 0" :description="t('notes.empty')" :image-size="60" />
-      <div v-for="note in store.notes" :key="note.id" class="note-card" :style="{ background: note.color }">
+      <div v-for="note in store.notes" :key="note.id" class="note-card" :style="{ backgroundColor: note.color }">
         <div class="note-actions">
           <div class="note-colors">
             <span
@@ -56,7 +56,12 @@ const palette = ["#fef3c7", "#dcfce7", "#dbeafe", "#fce7f3", "#ede9fe"];
   border-radius: 10px;
   padding: 8px 10px 10px;
   margin-bottom: 10px;
-  box-shadow: 0 2px 8px rgba(31, 41, 55, 0.08);
+  box-shadow: var(--dp-card-shadow);
+}
+
+/* 暗色主题下便签底色压暗，保持浅色文字可读 */
+html.dark .note-card {
+  background-image: linear-gradient(rgba(15, 17, 21, 0.55), rgba(15, 17, 21, 0.55));
 }
 
 .note-actions {
@@ -76,15 +81,15 @@ const palette = ["#fef3c7", "#dcfce7", "#dbeafe", "#fce7f3", "#ede9fe"];
   height: 12px;
   border-radius: 50%;
   cursor: pointer;
-  border: 1px solid rgba(31, 41, 55, 0.15);
+  border: 1px solid var(--dp-dot-border);
 }
 
 .color-dot.active {
-  border: 2px solid #409eff;
+  border: 2px solid var(--dp-accent);
 }
 
 .note-card :deep(.el-textarea__inner) {
-  background: rgba(255, 255, 255, 0.65);
+  background: var(--dp-note-input-bg);
   border-radius: 8px;
   font-size: 13px;
   box-shadow: none;

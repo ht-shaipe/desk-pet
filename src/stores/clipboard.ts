@@ -20,14 +20,15 @@ export const useClipboardStore = defineStore("clipboard", () => {
   }
 
   async function init() {
-    if (loaded.value) {
-      return;
+    if (!loaded.value) {
+      await refresh();
+      loaded.value = true;
     }
-    await refresh();
-    unlisten = await listen("clipboard://changed", () => {
-      void refresh();
-    });
-    loaded.value = true;
+    if (!unlisten) {
+      unlisten = await listen("clipboard://changed", () => {
+        void refresh();
+      });
+    }
   }
 
   async function copy(text: string) {

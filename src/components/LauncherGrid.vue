@@ -196,7 +196,7 @@ function confirmDialog() {
 }
 
 .launch-item:hover {
-  background: #eef1f5;
+  background: var(--dp-hover-bg);
 }
 
 .item-avatar {
@@ -213,14 +213,14 @@ function confirmDialog() {
 }
 
 .add-avatar {
-  background: #e3e6ea;
-  color: #6b7280;
+  background: var(--dp-btn-hover-bg);
+  color: var(--dp-text-muted);
 }
 
 .item-name {
   max-width: 100%;
   font-size: 12px;
-  color: #374151;
+  color: var(--dp-text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -246,7 +246,7 @@ function confirmDialog() {
   align-items: center;
   gap: 4px;
   margin-top: 10px;
-  color: #9ca3af;
+  color: var(--dp-text-tertiary);
   font-size: 12px;
 }
 </style>

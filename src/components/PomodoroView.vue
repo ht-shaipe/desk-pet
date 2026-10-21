@@ -59,7 +59,7 @@ const modes: PomoMode[] = ["focus", "short", "long"];
 
 .pomo-count {
   font-size: 12px;
-  color: #9ca3af;
+  color: var(--dp-text-tertiary);
 }
 
 .pomo-main {
@@ -77,9 +77,9 @@ const modes: PomoMode[] = ["focus", "short", "long"];
 }
 
 .mode-btn {
-  border: 1px solid #e0e3e8;
-  background: #ffffff;
-  color: #6b7280;
+  border: 1px solid var(--dp-card-border);
+  background: var(--dp-card-bg);
+  color: var(--dp-text-muted);
   font-size: 12px;
   padding: 5px 14px;
   border-radius: 999px;
@@ -88,8 +88,8 @@ const modes: PomoMode[] = ["focus", "short", "long"];
 }
 
 .mode-btn.active {
-  background: #409eff;
-  border-color: #409eff;
+  background: var(--dp-accent);
+  border-color: var(--dp-accent);
   color: #ffffff;
 }
 
@@ -97,7 +97,7 @@ const modes: PomoMode[] = ["focus", "short", "long"];
   font-size: 56px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  color: #1f2937;
+  color: var(--dp-text-primary);
   letter-spacing: 2px;
   line-height: 1;
 }

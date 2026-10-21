@@ -89,16 +89,16 @@ async function onAction(item: QuickItem) {
   align-items: center;
   gap: 8px;
   padding: 16px 6px;
-  background: #ffffff;
-  border: 1px solid #eef0f3;
+  background: var(--dp-card-bg);
+  border: 1px solid var(--dp-card-border);
   border-radius: 12px;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .quick-item:hover {
-  border-color: #c6e2ff;
-  box-shadow: 0 4px 12px rgba(64, 158, 255, 0.12);
+  border-color: var(--dp-card-hover-border);
+  box-shadow: var(--dp-card-hover-shadow);
 }
 
 .quick-item:active {
@@ -106,11 +106,11 @@ async function onAction(item: QuickItem) {
 }
 
 .quick-icon {
-  color: #409eff;
+  color: var(--dp-accent);
 }
 
 .quick-label {
   font-size: 12px;
-  color: #374151;
+  color: var(--dp-text-secondary);
 }
 </style>

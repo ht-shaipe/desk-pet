@@ -18,17 +18,27 @@ const win = getCurrentWindow();
 let unlistenMoved: UnlistenFn | undefined;
 let unlistenResized: UnlistenFn | undefined;
 
-onMounted(async () => {
-  await config.init();
-  unlistenMoved = await win.onMoved((event) => config.onWindowMoved(event.payload));
-  unlistenResized = await win.onResized((event) => {
-    if (ui.expanded) {
-      rememberPanelSize({ width: event.payload.width, height: event.payload.height });
-    }
-  });
+onMounted(() => {
   void useClipboardStore().init();
   void useLauncherStore().init();
   void useNotesStore().init();
+  void config
+    .init()
+    .then(() => win.onMoved((event) => config.onWindowMoved(event.payload)))
+    .then((unlisten) => {
+      unlistenMoved = unlisten;
+    })
+    .catch((err) => console.error("[desk-pet] 窗口位置初始化失败:", err));
+  win
+    .onResized((event) => {
+      if (ui.expanded) {
+        rememberPanelSize({ width: event.payload.width, height: event.payload.height });
+      }
+    })
+    .then((unlisten) => {
+      unlistenResized = unlisten;
+    })
+    .catch((err) => console.error("[desk-pet] resize 监听注册失败:", err));
 });
 
 onUnmounted(() => {

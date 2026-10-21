@@ -1,0 +1,126 @@
+use rusqlite::Connection;
+use std::fs;
+use std::path::Path;
+use tauri::AppHandle;
+
+use super::config::data_dir;
+
+const DB_FILE: &str = "deskpet.db";
+
+/// 打开（或创建）SQLite 数据库，建表并从旧 JSON 文件迁移历史数据。
+pub fn init_db(app: &AppHandle) -> Result<Connection, String> {
+    let dir = data_dir(app)?;
+    let conn = Connection::open(dir.join(DB_FILE)).map_err(|e| e.to_string())?;
+    conn.pragma_update(None, "journal_mode", "WAL")
+        .map_err(|e| e.to_string())?;
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS notes (
+            id TEXT PRIMARY KEY,
+            content TEXT NOT NULL DEFAULT '',
+            color TEXT NOT NULL DEFAULT '#fef3c7',
+            updated_at INTEGER NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS clipboard (
+            id TEXT PRIMARY KEY,
+            text TEXT NOT NULL,
+            updated_at INTEGER NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS launcher (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            icon TEXT NOT NULL DEFAULT '',
+            item_type TEXT NOT NULL DEFAULT 'app',
+            value TEXT NOT NULL,
+            color TEXT NOT NULL DEFAULT '#909399',
+            sort_order INTEGER NOT NULL DEFAULT 0
+        );",
+    )
+    .map_err(|e| e.to_string())?;
+    migrate_json(&conn, &dir)?;
+    Ok(conn)
+}
+
+/// 表为空且存在旧 JSON 文件时导入，导入成功后将 JSON 重命名为 .bak 备份。
+fn migrate_json(conn: &Connection, dir: &Path) -> Result<(), String> {
+    use super::notes::Note;
+    use crate::commands::clipboard::ClipEntry;
+
+    let json_path = |name: &str| dir.join(format!("{name}.json"));
+
+    // 便签
+    let note_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM notes", [], |r| r.get(0))
+        .map_err(|e| e.to_string())?;
+    if note_count == 0 {
+        if let Ok(list) = read_json_file::<Vec<Note>>(&json_path("notes")) {
+            let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+            for n in &list {
+                tx.execute(
+                    "INSERT OR REPLACE INTO notes (id, content, color, updated_at) VALUES (?1, ?2, ?3, ?4)",
+                    rusqlite::params![n.id, n.content, n.color, n.updated_at as i64],
+                )
+                .map_err(|e| e.to_string())?;
+            }
+            tx.commit().map_err(|e| e.to_string())?;
+            backup_json(&json_path("notes"));
+        }
+    }
+
+    // 剪贴板
+    let clip_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM clipboard", [], |r| r.get(0))
+        .map_err(|e| e.to_string())?;
+    if clip_count == 0 {
+        if let Ok(list) = read_json_file::<Vec<ClipEntry>>(&json_path("clipboard")) {
+            let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+            for e in &list {
+                tx.execute(
+                    "INSERT OR REPLACE INTO clipboard (id, text, updated_at) VALUES (?1, ?2, ?3)",
+                    rusqlite::params![e.id, e.text, e.updated_at as i64],
+                )
+                .map_err(|e| e.to_string())?;
+            }
+            tx.commit().map_err(|e| e.to_string())?;
+            backup_json(&json_path("clipboard"));
+        }
+    }
+
+    // 启动器
+    let launcher_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM launcher", [], |r| r.get(0))
+        .map_err(|e| e.to_string())?;
+    if launcher_count == 0 {
+        if let Ok(cfg) = read_json_file::<super::config::LauncherConfig>(&json_path("launcher")) {
+            let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+            for (i, item) in cfg.items.iter().enumerate() {
+                tx.execute(
+                    "INSERT OR REPLACE INTO launcher (id, name, icon, item_type, value, color, sort_order)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    rusqlite::params![
+                        item.id,
+                        item.name,
+                        item.icon,
+                        item.item_type,
+                        item.value,
+                        item.color,
+                        i as i64
+                    ],
+                )
+                .map_err(|e| e.to_string())?;
+            }
+            tx.commit().map_err(|e| e.to_string())?;
+            backup_json(&json_path("launcher"));
+        }
+    }
+
+    Ok(())
+}
+
+fn read_json_file<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T, String> {
+    let content = fs::read_to_string(path).map_err(|e| e.to_string())?;
+    serde_json::from_str(&content).map_err(|e| e.to_string())
+}
+
+fn backup_json(path: &Path) {
+    let _ = fs::rename(path, path.with_extension("json.bak"));
+}
