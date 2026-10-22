@@ -34,17 +34,17 @@ pub fn run() {
             tauri_cmds::toolbox_cmds::get_clipboard_image,
             tauri_cmds::toolbox_cmds::set_clipboard_image,
             tauri_cmds::toolbox_cmds::save_qr_png,
+            tauri_cmds::toolbox_cmds::save_image,
         ])
         .setup(|app| {
             use tauri::{Listener, Manager};
-            use tauri_cmds::settings_cmds::{AppSettings, read_json_or_default};
 
             let handle = app.handle();
             let dir = paths::data_dir(handle)?;
             let store = deskpet_store::Store::open(&dir)?;
             handle.manage(state::AppState::new(store));
 
-            let settings = read_json_or_default::<AppSettings>(handle, "settings.json");
+            let settings = deskpet_store::settings::load(&dir);
             let locale = settings.locale.unwrap_or_else(|| "zh-CN".to_string());
             tray::create_tray(handle, &locale)?;
             tauri_cmds::clipboard_cmds::start_poll(handle.clone());

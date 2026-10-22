@@ -9,7 +9,7 @@ import { useConfigStore } from "@/stores/config";
 const { t } = useI18n();
 const config = useConfigStore();
 const autostart = ref(false);
-const presetColors = ["#409eff", "#7265e6", "#67c23a", "#e6a23c", "#f56c6c", "#00a2ae", "#eb2f96"];
+const presetColors = ["#3d8bfd", "#7265e6", "#67c23a", "#e6a23c", "#f56c6c", "#00a2ae", "#eb2f96"];
 
 async function onChangeAvatar() {
   const picked = await open({
@@ -43,7 +43,7 @@ const spriteSizeModel = computed({
 });
 
 const accentModel = computed({
-  get: () => config.settings.accent_color ?? "#409eff",
+  get: () => config.settings.accent_color ?? "#3d8bfd",
   set: (val: string | null) => void config.setAccentColor(val),
 });
 

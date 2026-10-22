@@ -5,3 +5,4 @@ export const getClipboardImage = () => invoke<ImagePayload | null>("get_clipboar
 export const setClipboardImage = (payload: ImagePayload) =>
   invoke<void>("set_clipboard_image", { payload });
 export const saveQrPng = (dataUrl: string) => invoke<string>("save_qr_png", { dataUrl });
+export const saveImage = (dataUrl: string) => invoke<string>("save_image", { dataUrl });

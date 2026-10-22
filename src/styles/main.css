@@ -5,52 +5,109 @@
 /* ---------- 主题变量（html.dark 由主题切换驱动） ---------- */
 
 :root {
-  --dp-panel-bg: rgba(248, 249, 251, 0.97);
-  --dp-panel-border: rgba(31, 41, 55, 0.08);
+  --dp-panel-bg: #ffffff;
+  --dp-panel-border: rgba(15, 23, 42, 0.08);
   --dp-panel-shadow: 0 2px 8px rgba(31, 41, 55, 0.08), 0 8px 24px rgba(31, 41, 55, 0.06);
   --dp-card-bg: #ffffff;
-  --dp-card-border: #eef0f3;
-  --dp-card-hover-border: #c6e2ff;
-  --dp-card-hover-shadow: 0 2px 8px rgba(64, 158, 255, 0.12);
-  --dp-card-shadow: 0 2px 8px rgba(31, 41, 55, 0.08);
-  --dp-hover-bg: #eef1f5;
-  --dp-btn-bg: #eceef1;
-  --dp-btn-hover-bg: #dde1e6;
-  --dp-divider: #eef0f3;
-  --dp-text-primary: #1f2937;
-  --dp-text-secondary: #374151;
-  --dp-text-muted: #6b7280;
-  --dp-text-tertiary: #9ca3af;
-  --dp-accent: #409eff;
-  --dp-accent-deep: #2f7de1;
+  --dp-card-border: #e4e9f0;
+  --dp-card-hover-border: #b3d4ff;
+  --dp-card-hover-shadow: 0 2px 10px rgba(61, 139, 253, 0.16);
+  --dp-card-shadow: 0 2px 8px rgba(31, 41, 55, 0.07);
+  --dp-hover-bg: #f3f6fb;
+  --dp-hover-bg: color-mix(in srgb, var(--dp-accent) 8%, #ffffff);
+  --dp-btn-bg: #f5f7fb;
+  --dp-btn-hover-bg: #e9eef5;
+  --dp-btn-hover-bg: color-mix(in srgb, var(--dp-accent) 15%, #ffffff);
+  --dp-divider: #e4e9f0;
+  --dp-tabbar-bg: #fafbfd;
+  --dp-tabbar-border: rgba(15, 23, 42, 0.07);
+  --dp-tab-hover-bg: rgba(255, 255, 255, 0.92);
+  --dp-text-primary: #0c1424;
+  --dp-text-secondary: #1f2937;
+  --dp-text-muted: #3f4a5c;
+  --dp-text-tertiary: #5b6779;
+  --dp-accent: #3d8bfd;
+  --dp-accent-deep: #2563eb;
+  --dp-tag-soft: rgba(61, 139, 253, 0.13);
+  --dp-tag-soft: color-mix(in srgb, var(--dp-accent) 12%, #ffffff);
   --dp-danger-soft: #fef0f0;
-  --dp-note-input-bg: rgba(255, 255, 255, 0.65);
-  --dp-dot-border: rgba(31, 41, 55, 0.15);
+  --dp-note-input-bg: rgba(255, 255, 255, 0.75);
+  --dp-dot-border: rgba(15, 23, 42, 0.2);
+
+  /* Element Plus 全局变量接管：表单控件统一到主题体系，消除默认灰 */
+  --el-bg-color: var(--dp-card-bg);
+  --el-bg-color-overlay: var(--dp-card-bg);
+  --el-bg-color-page: #f6f8fc;
+  --el-color-primary: var(--dp-accent);
+  --el-color-primary-light-3: color-mix(in srgb, var(--dp-accent) 70%, #ffffff);
+  --el-color-primary-light-5: color-mix(in srgb, var(--dp-accent) 50%, #ffffff);
+  --el-color-primary-light-7: color-mix(in srgb, var(--dp-accent) 30%, #ffffff);
+  --el-color-primary-light-8: color-mix(in srgb, var(--dp-accent) 20%, #ffffff);
+  --el-color-primary-light-9: color-mix(in srgb, var(--dp-accent) 10%, #ffffff);
+  --el-color-primary-dark-2: var(--dp-accent-deep);
+  --el-fill-color-blank: #ffffff;
+  --el-fill-color-light: #f2f6fc;
+  --el-fill-color: #edf2fa;
+  --el-fill-color-lighter: #f6f8fb;
+  --el-fill-color-extra-light: #fafcff;
+  --el-border-color: #c3ccd9;
+  --el-border-color-light: #d4dbe6;
+  --el-border-color-lighter: #e4e9f0;
+  --el-border-color-extra-light: #eef2f7;
+  --el-text-color-placeholder: #98a3b3;
+  --el-text-color-disabled: #b6bfcc;
+  --el-disabled-bg-color: #f4f6fa;
+  --el-disabled-border-color: #dde3ec;
 }
 
 html.dark {
-  --dp-panel-bg: rgba(24, 27, 33, 0.97);
-  --dp-panel-border: rgba(255, 255, 255, 0.08);
+  --dp-panel-bg: rgba(22, 25, 31, 0.97);
+  --dp-panel-border: rgba(255, 255, 255, 0.1);
   --dp-panel-shadow: 0 2px 8px rgba(0, 0, 0, 0.35), 0 8px 24px rgba(0, 0, 0, 0.25);
-  --dp-card-bg: #262a31;
-  --dp-card-border: #343941;
-  --dp-card-hover-border: #3d5a7a;
+  --dp-card-bg: #252a33;
+  --dp-card-border: #3a4150;
+  --dp-card-hover-border: #40659a;
   --dp-card-hover-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   --dp-card-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-  --dp-hover-bg: #2a2f37;
-  --dp-btn-bg: #30363f;
+  --dp-hover-bg: #2b313c;
+  --dp-hover-bg: color-mix(in srgb, var(--dp-accent) 11%, #1f232b);
+  --dp-btn-bg: #303743;
   --dp-btn-hover-bg: #3a424d;
-  --dp-divider: #343941;
-  --dp-text-primary: #e5e7eb;
-  --dp-text-secondary: #cbd5e1;
-  --dp-text-muted: #9aa4b2;
-  --dp-text-tertiary: #6b7280;
-  --dp-accent: #4ba3ff;
+  --dp-btn-hover-bg: color-mix(in srgb, var(--dp-accent) 24%, #303743);
+  --dp-divider: #363d49;
+  --dp-tabbar-bg: rgba(255, 255, 255, 0.055);
+  --dp-tabbar-border: rgba(255, 255, 255, 0.08);
+  --dp-tab-hover-bg: rgba(255, 255, 255, 0.1);
+  --dp-text-primary: #f8fafc;
+  --dp-text-secondary: #e8edf4;
+  --dp-text-muted: #b9c3d2;
+  --dp-text-tertiary: #919cb0;
+  --dp-accent: #58aaff;
   --dp-accent-deep: #2f7de1;
+  --dp-tag-soft: rgba(88, 170, 255, 0.18);
+  --dp-tag-soft: color-mix(in srgb, var(--dp-accent) 17%, #1f232b);
   --dp-danger-soft: rgba(245, 108, 108, 0.15);
-  --dp-note-input-bg: rgba(0, 0, 0, 0.25);
-  --dp-dot-border: rgba(255, 255, 255, 0.2);
+  --dp-note-input-bg: rgba(0, 0, 0, 0.2);
+  --dp-dot-border: rgba(255, 255, 255, 0.24);
+
+  --el-bg-color: var(--dp-card-bg);
+  --el-bg-color-overlay: #2a3039;
+  --el-bg-color-page: #1c2027;
+  --el-fill-color-blank: #252a33;
+  --el-fill-color-light: #2c323d;
+  --el-fill-color: #313844;
+  --el-fill-color-lighter: #282e38;
+  --el-fill-color-extra-light: #262b34;
+  --el-border-color: #4a5262;
+  --el-border-color-light: #404754;
+  --el-border-color-lighter: #383f4b;
+  --el-border-color-extra-light: #323945;
+  --el-text-color-placeholder: #6f7a8d;
+  --el-text-color-disabled: #59637a;
+  --el-disabled-bg-color: #2a3039;
+  --el-disabled-border-color: #3a4150;
 }
+
 
 html,
 body,
@@ -60,7 +117,18 @@ body,
   width: 100%;
   height: 100%;
   overflow: hidden;
+  overscroll-behavior: none;
+  scrollbar-width: none;
   background: transparent;
+}
+
+/* 页面级永不滚动（各视图内部用 el-scrollbar），彻底隐藏原生滚动条 */
+html::-webkit-scrollbar,
+body::-webkit-scrollbar,
+#app::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
 }
 
 body {
@@ -73,9 +141,8 @@ body {
 }
 
 .app-root {
-  position: relative;
-  width: 100vw;
-  height: 100vh;
+  position: fixed;
+  inset: 0;
   overflow: hidden;
 }
 
@@ -99,4 +166,15 @@ body {
 .view-scroll {
   flex: 1;
   min-height: 0;
+}
+/* ---------- 滚动条（浅色轨道 + 主题色滑块，亮暗两套） ---------- */
+
+.view-scroll .el-scrollbar__thumb {
+  background: color-mix(in srgb, var(--dp-text-tertiary) 55%, transparent);
+  opacity: 0.6;
+}
+
+.view-scroll .el-scrollbar__thumb:hover {
+  background: var(--dp-accent);
+  opacity: 0.75;
 }

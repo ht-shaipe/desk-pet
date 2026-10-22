@@ -266,9 +266,9 @@ async function copyResult() {
 }
 
 .switch-btn {
-  border: 1px solid #e0e3e8;
-  background: #ffffff;
-  color: #6b7280;
+  border: 1px solid var(--dp-card-border);
+  background: var(--dp-card-bg);
+  color: var(--dp-text-muted);
   font-size: 12px;
   padding: 4px 12px;
   border-radius: 999px;
@@ -277,8 +277,8 @@ async function copyResult() {
 }
 
 .switch-btn.active {
-  background: #409eff;
-  border-color: #409eff;
+  background: var(--dp-accent);
+  border-color: var(--dp-accent);
   color: #ffffff;
 }
 
@@ -291,7 +291,7 @@ async function copyResult() {
 
 .size-label {
   font-size: 12px;
-  color: #6b7280;
+  color: var(--dp-text-muted);
 }
 
 .gen-btn {
@@ -342,20 +342,20 @@ async function copyResult() {
 .parse-result {
   margin-top: 14px;
   padding: 10px;
-  background: #ffffff;
-  border: 1px solid #eef0f3;
+  background: var(--dp-card-bg);
+  border: 1px solid var(--dp-card-border);
   border-radius: 10px;
 }
 
 .result-label {
   font-size: 11px;
-  color: #9ca3af;
+  color: var(--dp-text-tertiary);
   margin-bottom: 6px;
 }
 
 .result-text {
   font-size: 13px;
-  color: #1f2937;
+  color: var(--dp-text-primary);
   line-height: 1.5;
   word-break: break-all;
   white-space: pre-wrap;

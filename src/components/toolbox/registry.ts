@@ -1,6 +1,6 @@
 import type { Component } from "vue";
 import { defineAsyncComponent } from "vue";
-import { Postcard } from "@element-plus/icons-vue";
+import { Crop, Lock, Postcard, ScaleToOriginal } from "@element-plus/icons-vue";
 
 /** 工具箱内一个工具的注册信息。 */
 export interface ToolboxTool {
@@ -29,5 +29,26 @@ export const TOOLBOX_TOOLS: ToolboxTool[] = [
     descKey: "toolbox.tools.qr.desc",
     icon: Postcard,
     component: defineAsyncComponent(() => import("./tools/QrTool.vue")),
+  },
+  {
+    id: "base64",
+    titleKey: "toolbox.tools.base64.title",
+    descKey: "toolbox.tools.base64.desc",
+    icon: ScaleToOriginal,
+    component: defineAsyncComponent(() => import("./tools/Base64Tool.vue")),
+  },
+  {
+    id: "des",
+    titleKey: "toolbox.tools.des.title",
+    descKey: "toolbox.tools.des.desc",
+    icon: Lock,
+    component: defineAsyncComponent(() => import("./tools/DesTool.vue")),
+  },
+  {
+    id: "imgcompress",
+    titleKey: "toolbox.tools.imgcompress.title",
+    descKey: "toolbox.tools.imgcompress.desc",
+    icon: Crop,
+    component: defineAsyncComponent(() => import("./tools/ImageCompressTool.vue")),
   },
 ];

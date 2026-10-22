@@ -1,4 +1,3 @@
-use arboard::Clipboard;
 use deskpet_store::ClipEntry;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager};
@@ -56,10 +55,7 @@ pub fn delete_clipboard_entry(app: AppHandle, id: String) -> Result<(), String> 
 
 #[tauri::command]
 pub fn copy_to_clipboard(text: String) -> Result<(), String> {
-    let mut board = Clipboard::new().map_err(|e| format!("无法访问剪贴板: {e}"))?;
-    board
-        .set_text(text)
-        .map_err(|e| format!("写入剪贴板失败: {e}"))
+    deskpet_os::clipboard::copy_text(&text).map_err(|e| e.to_string())
 }
 
 /// 启动剪贴板轮询线程：每秒读取一次系统剪贴板，捕获新文本并广播事件。
@@ -77,14 +73,14 @@ pub fn start_poll(app: AppHandle) {
     }
 
     std::thread::spawn(move || {
-        let mut board = match Clipboard::new() {
+        let mut board = match deskpet_os::clipboard::Clipboard::new() {
             Ok(b) => b,
             Err(_) => return,
         };
         let mut last_text: Option<String> = None;
         loop {
             std::thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
-            let Ok(text) = board.get_text() else {
+            let Ok(text) = board.read_text() else {
                 continue;
             };
             let text = text.trim().to_string();

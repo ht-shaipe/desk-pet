@@ -40,7 +40,7 @@ const activeComponent = computed(() => activeTool.value?.component);
           @click="activeId = tool.id"
         >
           <span class="tool-icon">
-            <el-icon :size="22"><component :is="tool.icon" /></el-icon>
+            <el-icon :size="18"><component :is="tool.icon" /></el-icon>
           </span>
           <span class="tool-info">
             <span class="tool-name">{{ t(tool.titleKey) }}</span>
@@ -65,8 +65,8 @@ const activeComponent = computed(() => activeTool.value?.component);
 }
 
 .tool-list {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
   gap: 8px;
   padding: 4px 0;
 }
@@ -74,10 +74,10 @@ const activeComponent = computed(() => activeTool.value?.component);
 .tool-card {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  background: #ffffff;
-  border: 1px solid #eef0f3;
+  gap: 8px;
+  padding: 10px;
+  background: var(--dp-card-bg);
+  border: 1px solid var(--dp-card-border);
   border-radius: 12px;
   cursor: pointer;
   text-align: left;
@@ -85,8 +85,8 @@ const activeComponent = computed(() => activeTool.value?.component);
 }
 
 .tool-card:hover {
-  border-color: #c6e2ff;
-  box-shadow: 0 4px 12px rgba(64, 158, 255, 0.12);
+  border-color: var(--dp-card-hover-border);
+  box-shadow: var(--dp-card-hover-shadow);
 }
 
 .tool-card:active {
@@ -97,11 +97,11 @@ const activeComponent = computed(() => activeTool.value?.component);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 38px;
-  height: 38px;
-  border-radius: 10px;
-  background: #ecf5ff;
-  color: #409eff;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--dp-tag-soft);
+  color: var(--dp-accent);
   flex-shrink: 0;
 }
 
@@ -113,13 +113,16 @@ const activeComponent = computed(() => activeTool.value?.component);
 }
 
 .tool-name {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
-  color: #1f2937;
+  color: var(--dp-text-primary);
 }
 
 .tool-desc {
-  font-size: 11px;
-  color: #9ca3af;
+  font-size: 10px;
+  color: var(--dp-text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>

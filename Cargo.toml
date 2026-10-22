@@ -1,11 +1,15 @@
 [workspace]
-members = ["crates/deskpet-store", "src-tauri"]
+members = ["crates/deskpet-os", "crates/deskpet-store", "src-tauri"]
 resolver = "2"
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rusqlite = { version = "0.40", features = ["bundled"] }
+arboard = "3"
+base64 = "0.22"
+thiserror = "2"
+tempfile = "3"
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]

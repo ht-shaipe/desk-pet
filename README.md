@@ -4,19 +4,21 @@
 
 ## 功能特性
 
-- **桌面漂浮精灵**：无边框透明窗口、始终置顶、不占任务栏、可见于所有工作区（macOS）
+- **桌面漂浮精灵**：无边框透明窗口、始终置顶、不占任务栏、可见于所有工作区（macOS），支持自定义头像
 - **自由拖拽**：按住精灵拖到屏幕任意位置，位置自动记忆、重启恢复、贴边自动钳制
 - **单击展开面板**，再次单击精灵或右上角按钮收起
 - **应用启动器**：应用 / 网址 / 命令 三类入口，支持增删改、自定义图标与颜色
 - **便签**：随手记录、多色彩、输入防抖自动保存
 - **番茄钟**：专注 / 短休 / 长休循环，到时系统通知提醒
-- **剪贴板历史**：自动捕获复制内容（仅文本，最多 100 条，超长自动截断），支持搜索、一键回贴、单条删除、清空
+- **剪贴板历史**：自动捕获复制内容（仅文本，最多 100 条，超长自动截断），支持搜索、URL 识别高亮、一键回贴、单条删除、清空
 - **快捷操作**：深浅模式切换、静音、锁屏、睡眠、直达系统设置各子页
 - **工具箱**：可扩展的小工具集合，内置二维码生成/解析
+- **账户**：手机号注册 / 登录（远端验证码 + 滑块人机验证），token 本地保存
 - **多语言**：中文 / 英文，跟随系统语言，设置页可切换
 - **系统托盘**：显示/隐藏精灵、退出
 - **全局快捷键**：`Command/Ctrl + Shift + P` 显示/隐藏
 - **开机自启**：设置页开关
+- **单实例**：重复启动时唤起已有实例
 
 ### 工具箱扩展
 
@@ -25,6 +27,18 @@
 1. 在 `tools/` 下新建组件（根节点撑满高度，滚动区自行管理）；
 2. 在 `registry.ts` 的 `TOOLBOX_TOOLS` 数组追加一项（id、i18n 键、图标、组件）；
 3. 在 `src/i18n/zh-CN.ts` 与 `en.ts` 的 `toolbox.tools.<id>` 命名空间补充中英文案。
+
+## 工程结构
+
+```
+desk-pet/
+├── Cargo.toml              # workspace 根（统一依赖版本与构建配置）
+├── crates/
+│   ├── deskpet-store/      # 数据层：SQLite 持久化、设置读写、头像管理（不依赖 Tauri，可独立测试）
+│   └── deskpet-os/         # 系统层：应用启动、快捷操作、剪贴板访问、文件落盘（不依赖 Tauri）
+├── src-tauri/              # Tauri 壳：窗口/托盘/插件注册，命令为薄壳委托到两个 crate
+└── src/                    # 前端：views/ 页面、components/ 组件、api/ 按域封装、stores/ Pinia
+```
 
 ## 平台支持
 
@@ -52,10 +66,12 @@ npm run tauri build  # 打包发布
 - 透明窗口依赖 macOS 私有 API（`tauri.conf.json` 的 `macOSPrivateApi` + Cargo 的
   `macos-private-api` feature），因此**不能上架 Mac App Store**，个人使用无影响
 - 拖拽与点击判定：Pointer 事件 + 4px 位移阈值 + 原生 `startDragging`，避免点击误触为拖拽
-- 展开/收起采用**单窗口编程式 resize**（96×96 ⇄ 360×560），无需多窗口同步
-- 数据持久化：serde JSON，位于 `~/Library/Application Support/com.deskpet.desktop/`
-  （Windows 为 `%APPDATA%\com.deskpet.desktop\`）
+- 展开/收起采用**单窗口编程式 resize**（72×72 ⇄ 388×588），无需多窗口同步
+- 数据持久化：SQLite（`deskpet.db`，WAL 模式，rusqlite bundled）存储便签/剪贴板/启动器，
+  `settings.json` 存储设置项，均位于 `~/Library/Application Support/com.deskpet.desktop/`
+  （Windows 为 `%APPDATA%\com.deskpet.desktop\`）；首次运行自动从旧版 JSON 迁移并留 `.bak`
 - 剪贴板：Rust 后台线程每秒轮询（arboard），去重后经 Tauri 事件推送给前端
+- 登录注册走 `tauri-plugin-http` 直连远端（免 WebView CORS 限制），token 存于 settings.json
 - 番茄钟剩余时间基于时间戳计算，规避 WebView 定时器节流漂移
 
 ## 已知限制

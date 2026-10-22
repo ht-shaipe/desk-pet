@@ -97,4 +97,5 @@ const avatarSrc = computed(() => {
     transform: translateY(-3px) scale(1.03);
   }
 }
+
 </style>

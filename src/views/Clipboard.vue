@@ -74,11 +74,20 @@ async function onClear() {
         v-for="entry in filtered"
         :key="entry.id"
         class="clip-item"
+        :class="{ 'is-link': isUrl(entry.text) }"
+        :title="t('clipboard.copyTip')"
         @click="onCopy(entry.text)"
       >
-        <div class="clip-text">{{ entry.text }}</div>
+        <div class="clip-text">
+          <el-icon v-if="isUrl(entry.text)" class="link-icon"><Link /></el-icon>
+          <span class="text-body">{{ entry.text }}</span>
+        </div>
         <div class="clip-meta">
-          <span>{{ timeText(entry.updated_at) }}</span>
+          <span class="meta-time">
+            <span v-if="isUrl(entry.text)" class="meta-tag">URL</span>
+            <span v-else-if="entry.text.length > 80" class="meta-tag">TEXT</span>
+            {{ timeText(entry.updated_at) }}
+          </span>
           <span class="clip-delete" :title="t('common.delete')" @click.stop="store.remove(entry.id)">
             <el-icon :size="12"><Delete /></el-icon>
           </span>
@@ -101,13 +110,27 @@ async function onClear() {
 }
 
 .clip-item {
+  position: relative;
   background: var(--dp-card-bg);
   border: 1px solid var(--dp-card-border);
   border-radius: 10px;
-  padding: 8px 10px;
-  margin-bottom: 8px;
+  padding: 8px 10px 6px 12px;
+  margin-bottom: 6px;
   cursor: pointer;
+  overflow: hidden;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.clip-item::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--dp-accent);
+  opacity: 0;
+  transition: opacity 0.15s ease;
 }
 
 .clip-item:hover {
@@ -115,32 +138,76 @@ async function onClear() {
   box-shadow: var(--dp-card-hover-shadow);
 }
 
+.clip-item:hover::before {
+  opacity: 1;
+}
+
 .clip-text {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
   font-size: 12px;
   color: var(--dp-text-secondary);
   line-height: 1.5;
+}
+
+.clip-item.is-link .text-body {
+  color: var(--dp-accent);
+  word-break: break-all;
+}
+
+.text-body {
   white-space: pre-wrap;
   word-break: break-all;
   display: -webkit-box;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.link-icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--dp-accent);
 }
 
 .clip-meta {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-top: 6px;
+  margin-top: 5px;
   font-size: 11px;
   color: var(--dp-text-tertiary);
+}
+
+.meta-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.meta-tag {
+  flex-shrink: 0;
+  font-size: 10px;
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: 4px;
+  color: var(--dp-accent);
+  background: var(--dp-tag-soft);
 }
 
 .clip-delete {
   display: inline-flex;
   align-items: center;
-  padding: 2px;
-  border-radius: 4px;
+  padding: 3px;
+  border-radius: 5px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.clip-item:hover .clip-delete {
+  opacity: 1;
 }
 
 .clip-delete:hover {
