@@ -105,6 +105,14 @@ function stop() {
   abortController?.abort();
 }
 
+/** Enter 发送；中文输入法选词确认（isComposing）不触发。 */
+function onEnterKey(e: KeyboardEvent) {
+  if (e.isComposing) {
+    return;
+  }
+  void send();
+}
+
 function clearHistory() {
   if (messages.value.length === 0) {
     return;
@@ -217,7 +225,7 @@ async function removeModel(model: AiModel) {
         :autosize="{ minRows: 1, maxRows: 4 }"
         :placeholder="t('chat.inputPh')"
         :disabled="models.length === 0"
-        @keydown.enter.exact.prevent="send"
+        @keydown.enter.exact.prevent="onEnterKey"
       />
       <el-button
         v-if="streaming"
@@ -377,20 +385,44 @@ async function removeModel(model: AiModel) {
 }
 
 .chat-input {
-  display: flex;
-  align-items: flex-end;
-  gap: 8px;
+  position: relative;
   padding-top: 8px;
   flex-shrink: 0;
 }
 
 .chat-input :deep(.el-textarea__inner) {
-  border-radius: 10px;
+  padding: 9px 46px 9px 12px;
+  border-radius: 12px;
+  line-height: 1.55;
+  resize: none;
+  scrollbar-width: none;
 }
 
-.send-btn {
-  flex-shrink: 0;
-  margin-bottom: 2px;
+.chat-input :deep(.el-textarea__inner)::-webkit-scrollbar {
+  display: none;
+}
+
+/* 发送按钮内嵌在输入框右下角，与输入区视为一个整体 */
+.chat-input .send-btn {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  padding: 0;
+  margin: 0;
+}
+
+.chat-input .send-btn :deep(.el-icon) {
+  font-size: 15px;
+}
+
+/* 无内容时弱化为内嵌小圆点，不抢输入框的视觉重心 */
+.chat-input .send-btn.is-disabled {
+  border-color: transparent;
+  background: var(--dp-btn-bg);
+  color: var(--dp-text-tertiary);
 }
 
 /* ---------- 模型管理 ---------- */

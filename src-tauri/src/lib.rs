@@ -53,9 +53,22 @@ pub fn run() {
             let locale = settings.locale.clone().unwrap_or_else(|| "zh-CN".to_string());
             let app_name = settings.app_name.clone().unwrap_or_else(|| "Desk Pet".to_string());
 
-            // 启动时应用「在 Dock 中显示」设置（仅 macOS，缺省显示）
+            // 启动时应用「在 Dock 中显示」设置（仅 macOS；仅在用户明确隐藏时才改激活策略）
+            // 切换激活策略会隐藏/降级主窗口，需要重新拉起精灵窗口
             #[cfg(target_os = "macos")]
-            let _ = handle.set_dock_visibility(settings.show_dock.unwrap_or(true));
+            if settings.show_dock == Some(false) {
+                let _ = handle.set_dock_visibility(false);
+                if let Some(main) = handle.get_webview_window("main") {
+                    let _ = main.show();
+                    let _ = main.set_always_on_top(true);
+                    let _ = main.set_visible_on_all_workspaces(true);
+                }
+            }
+            // notify 提醒窗口启动时强制隐藏（macOS 透明窗口有创建时短暂可见的怪癖，
+            // 防止一块全透明区域遮挡点击）
+            if let Some(notify_win) = handle.get_webview_window("notify") {
+                let _ = notify_win.hide();
+            }
             tray::create_tray(handle, &locale, &app_name)?;
             tauri_cmds::clipboard_cmds::start_poll(handle.clone());
 

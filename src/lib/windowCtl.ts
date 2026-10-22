@@ -88,16 +88,20 @@ export async function expandWindow(): Promise<void> {
     new PhysicalSize(Math.round(MIN_PANEL_WIDTH * sf), Math.round(MIN_PANEL_HEIGHT * sf))
   );
   await win.setResizable(true);
+  // 隐藏 Dock（accessory）模式下点击不会自动激活应用，键盘输入会失效，
+  // 展开面板即代表用户要交互，这里主动取焦点
+  await win.setFocus();
 }
 
 /** 展开态 -> 折叠态：恢复展开前记录的精灵位置，并还原为不可调整的小窗。 */
 export async function collapseWindow(): Promise<void> {
   const sf = await scaleFactor();
   const size = Math.round(PET_SIZE * sf);
+  // 先解除最小尺寸并缩小窗口，最后才锁定 resizable（macOS 上先锁再缩可能失效）
   await win.setMinSize(null);
-  await win.setResizable(false);
   if (savedPetPos) {
     await win.setPosition(new PhysicalPosition(savedPetPos.x, savedPetPos.y));
   }
   await win.setSize(new PhysicalSize(size, size));
+  await win.setResizable(false);
 }

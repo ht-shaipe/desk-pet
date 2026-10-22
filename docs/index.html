@@ -1,0 +1,551 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Desk Pet · 桌面上的小精灵</title>
+    <meta
+      name="description"
+      content="Desk Pet 是一款基于 Tauri 2 + Vue 3 + Rust 的跨平台桌面宠物：透明置顶、自由拖拽，单击展开启动器、便签、番茄钟、剪贴板与工具箱。"
+    />
+    <meta name="theme-color" content="#080a0f" />
+    <meta property="og:title" content="Desk Pet · 桌面上的小精灵" />
+    <meta
+      property="og:description"
+      content="拖到屏幕任何角落待命，单击展开启动器、便签、番茄钟、剪贴板与工具箱。"
+    />
+    <meta property="og:type" content="website" />
+    <link rel="icon" type="image/png" href="assets/icon.png" />
+    <link rel="apple-touch-icon" href="assets/icon.png" />
+    <link rel="stylesheet" href="assets/styles.css" />
+    <script>
+      // 首屏渲染前应用主题，避免闪烁
+      (function () {
+        document.documentElement.classList.add("js");
+        try {
+          var saved = localStorage.getItem("dp-theme");
+          var dark = !window.matchMedia("(prefers-color-scheme: light)").matches;
+          document.documentElement.dataset.theme = saved || (dark ? "dark" : "light");
+        } catch (e) {
+          /* localStorage 不可用时保持默认深色 */
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">跳到主要内容</a>
+
+    <!-- 图标 sprite -->
+    <svg class="sprite" aria-hidden="true" focusable="false">
+      <symbol id="i-grid" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3.5" y="3.5" width="7" height="7" rx="2" />
+        <rect x="13.5" y="3.5" width="7" height="7" rx="2" />
+        <rect x="3.5" y="13.5" width="7" height="7" rx="2" />
+        <rect x="13.5" y="13.5" width="7" height="7" rx="2" />
+      </symbol>
+      <symbol id="i-note" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="4" y="3.5" width="16" height="17" rx="3" />
+        <path d="M8 9h8M8 13h8M8 17h5" />
+      </symbol>
+      <symbol id="i-timer" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="13.5" r="7.5" />
+        <path d="M12 10v3.5l2.5 1.5M9 2.5h6" />
+      </symbol>
+      <symbol id="i-clipboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="5.5" y="4.5" width="13" height="16" rx="2.5" />
+        <rect x="9" y="2.5" width="6" height="4" rx="1.5" />
+      </symbol>
+      <symbol id="i-toolbox" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="8" width="18" height="11.5" rx="2.5" />
+        <path d="M9 8V6a3 3 0 0 1 6 0v2M3 13h18M10 13v2h4v-2" />
+      </symbol>
+      <symbol id="i-sparkles" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M11 3.5l1.7 4.8L17.5 10l-4.8 1.7L11 16.5l-1.7-4.8L4.5 10l4.8-1.7z" />
+        <path d="M18 15l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z" />
+      </symbol>
+      <symbol id="i-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="8" r="4" />
+        <path d="M4.5 20.5a7.5 7.5 0 0 1 15 0" />
+      </symbol>
+      <symbol id="i-sliders" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 8h16M4 16h16" />
+        <circle cx="9" cy="8" r="2.3" />
+        <circle cx="15" cy="16" r="2.3" />
+      </symbol>
+      <symbol id="i-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 3h6l-.9 5.4 3.9 3.1v2H6v-2l3.9-3.1z" />
+        <path d="M12 13.5V21" />
+      </symbol>
+      <symbol id="i-drag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 3v18M3 12h18M9.5 5.5L12 3l2.5 2.5M9.5 18.5L12 21l2.5-2.5M5.5 9.5L3 12l2.5 2.5M18.5 9.5L21 12l-2.5 2.5" />
+      </symbol>
+      <symbol id="i-window" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="4.5" width="18" height="15" rx="2.5" />
+        <path d="M3 9h18M6.5 6.8h.01M9 6.8h.01" />
+      </symbol>
+      <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M20 12a8 8 0 1 1-2.4-5.7" />
+        <path d="M20 4v4.5h-4.5" />
+      </symbol>
+      <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 3.5v11M7.5 10l4.5 4.5L16.5 10M4.5 20h15" />
+      </symbol>
+      <symbol id="i-code" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M8.5 7.5L4 12l4.5 4.5M15.5 7.5L20 12l-4.5 4.5" />
+      </symbol>
+      <symbol id="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M7 17L17 7M9.5 7H17v7.5" />
+      </symbol>
+      <symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M20.5 14.6A8.6 8.6 0 0 1 9.4 3.5a8.6 8.6 0 1 0 11.1 11.1z" />
+      </symbol>
+      <symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="4" />
+        <path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M18.7 5.3l-1.4 1.4M6.7 17.3l-1.4 1.4" />
+      </symbol>
+      <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="9" width="11.5" height="11.5" rx="2.5" />
+        <path d="M6.5 15H5.5A2 2 0 0 1 3.5 13V5.5a2 2 0 0 1 2-2H13a2 2 0 0 1 2 2v1" />
+      </symbol>
+      <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4.5 12.5l4.5 4.5L19.5 6.5" />
+      </symbol>
+      <symbol id="i-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 7h16M4 12h16M4 17h16" />
+      </symbol>
+      <symbol id="i-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M6 6l12 12M18 6L6 18" />
+      </symbol>
+    </svg>
+
+    <header class="site-header" id="top">
+      <div class="shell header-inner">
+        <a class="brand" href="#top" aria-label="Desk Pet 首页">
+          <span class="brand-mark"><img src="assets/icon.png" alt="" width="28" height="28" /></span>
+          <span class="brand-text"><strong>Desk Pet</strong><span>桌面精灵</span></span>
+        </a>
+
+        <nav class="site-nav" aria-label="主导航">
+          <a href="#features">功能</a>
+          <a href="#architecture">架构</a>
+          <a href="#platform">平台</a>
+          <a href="#start">开始使用</a>
+        </nav>
+
+        <div class="header-actions">
+          <button class="icon-btn theme-toggle" type="button" aria-label="切换深浅主题">
+            <svg class="icon icon-sun"><use href="#i-sun" /></svg>
+            <svg class="icon icon-moon"><use href="#i-moon" /></svg>
+          </button>
+          <a
+            class="btn btn-ghost btn-sm"
+            href="https://github.com/ht-shaipe/desk-pet"
+            target="_blank"
+            rel="noreferrer noopener"
+            aria-label="GitHub 源码"
+          >
+            <svg class="icon"><use href="#i-code" /></svg><span>源码</span>
+          </a>
+          <button
+            class="icon-btn nav-toggle"
+            type="button"
+            aria-label="打开导航菜单"
+            aria-expanded="false"
+            aria-controls="mobileNav"
+          >
+            <svg class="icon nav-open-ic"><use href="#i-menu" /></svg>
+            <svg class="icon nav-close-ic"><use href="#i-close" /></svg>
+          </button>
+        </div>
+      </div>
+
+      <nav class="mobile-nav" id="mobileNav" aria-label="移动端导航">
+        <a href="#features">功能</a>
+        <a href="#architecture">架构</a>
+        <a href="#platform">平台</a>
+        <a href="#start">开始使用</a>
+        <span class="mobile-nav-sep" aria-hidden="true"></span>
+        <a href="https://github.com/ht-shaipe/desk-pet" target="_blank" rel="noreferrer noopener"
+          >GitHub 源码</a
+        >
+      </nav>
+    </header>
+
+    <main id="main">
+      <!-- Hero -->
+      <section class="hero">
+        <div class="hero-bg" aria-hidden="true"></div>
+        <div class="shell hero-inner">
+          <div class="hero-copy reveal">
+            <p class="eyebrow"><span class="pulse-dot"></span>Tauri 2 · Vue 3 · Rust</p>
+            <h1>桌面上的小精灵，<br /><span class="grad">随叫随到的工作台</span></h1>
+            <p class="lede">
+              拖到任意角落待命，单击展开启动器、便签、番茄钟、剪贴板与工具箱。轻巧、置顶、开机即用。
+            </p>
+            <div class="cta-row">
+              <a
+                class="btn btn-primary"
+                href="https://github.com/ht-shaipe/desk-pet/releases/latest"
+                target="_blank"
+                rel="noreferrer noopener"
+              >
+                <svg class="icon"><use href="#i-download" /></svg>下载最新版
+              </a>
+              <a
+                class="btn btn-ghost"
+                href="https://github.com/ht-shaipe/desk-pet"
+                target="_blank"
+                rel="noreferrer noopener"
+              >
+                浏览源码<svg class="icon"><use href="#i-arrow" /></svg>
+              </a>
+            </div>
+            <ul class="hero-meta">
+              <li>macOS Apple Silicon / Intel</li>
+              <li>Windows 10 / 11</li>
+              <li>签名自动更新</li>
+            </ul>
+          </div>
+
+          <div class="hero-visual reveal" data-delay="1">
+            <div class="stage">
+              <div class="stage-glow" aria-hidden="true"></div>
+              <p class="stage-badge"><span class="pulse-dot"></span>单击精灵展开面板</p>
+
+              <div class="mock" id="mock">
+                <img
+                  class="mock-pet"
+                  src="assets/avatar.png"
+                  alt="Desk Pet 宠物头像"
+                  width="56"
+                  height="56"
+                />
+                <div class="mock-head">
+                  <span class="mock-brand"><i></i>DESK PET</span>
+                  <span class="mock-collapse" aria-hidden="true"></span>
+                </div>
+
+                <div class="mock-tabs" role="group" aria-label="功能预览切换">
+                  <button type="button" class="mock-tab is-active" data-tab="launcher" aria-label="启动器" aria-pressed="true">
+                    <svg class="icon"><use href="#i-grid" /></svg>
+                  </button>
+                  <button type="button" class="mock-tab" data-tab="notes" aria-label="便签" aria-pressed="false">
+                    <svg class="icon"><use href="#i-note" /></svg>
+                  </button>
+                  <button type="button" class="mock-tab" data-tab="pomodoro" aria-label="番茄钟" aria-pressed="false">
+                    <svg class="icon"><use href="#i-timer" /></svg>
+                  </button>
+                  <button type="button" class="mock-tab" data-tab="clipboard" aria-label="剪贴板" aria-pressed="false">
+                    <svg class="icon"><use href="#i-clipboard" /></svg>
+                  </button>
+                  <button type="button" class="mock-tab" data-tab="toolbox" aria-label="工具箱" aria-pressed="false">
+                    <svg class="icon"><use href="#i-toolbox" /></svg>
+                  </button>
+                  <button type="button" class="mock-tab" data-tab="quick" aria-label="快捷操作" aria-pressed="false">
+                    <svg class="icon"><use href="#i-sparkles" /></svg>
+                  </button>
+                  <button type="button" class="mock-tab" data-tab="account" aria-label="账户" aria-pressed="false">
+                    <svg class="icon"><use href="#i-user" /></svg>
+                  </button>
+                  <button type="button" class="mock-tab" data-tab="settings" aria-label="设置" aria-pressed="false">
+                    <svg class="icon"><use href="#i-sliders" /></svg>
+                  </button>
+                </div>
+
+                <div class="mock-body" aria-live="polite">
+                  <div class="mock-body-head">
+                    <span id="mockTitle">应用启动器</span><em>示意</em>
+                  </div>
+                  <ul class="mock-list" id="mockList">
+                    <li><span>VS Code</span><em>应用</em></li>
+                    <li><span>github.com</span><em>网址</em></li>
+                    <li><span>npm run tauri dev</span><em>命令</em></li>
+                  </ul>
+                </div>
+              </div>
+
+              <div class="stage-note">真实面板尺寸 388 × 588（可拖拽调整）</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="shell">
+          <dl class="stats reveal">
+            <div><dt>72 × 72</dt><dd>待命窗口尺寸</dd></div>
+            <div><dt>388 × 588</dt><dd>默认展开面板</dd></div>
+            <div><dt>100 <small>条</small></dt><dd>剪贴板历史上限</dd></div>
+            <div><dt>6 <small>小时</small></dt><dd>自动更新检查</dd></div>
+          </dl>
+        </div>
+      </section>
+
+      <!-- 功能 -->
+      <section class="section" id="features">
+        <div class="shell">
+          <header class="section-head reveal">
+            <p class="eyebrow">Features</p>
+            <h2>一只精灵，十二件顺手的小事</h2>
+            <p class="section-lede">所有能力都收在同一块面板里，不打断你手上的工作。</p>
+          </header>
+
+          <div class="features-grid">
+            <article class="card reveal">
+              <span class="card-icon"><svg class="icon"><use href="#i-pin" /></svg></span>
+              <h3>常驻桌面</h3>
+              <p>透明无边框、始终置顶、不占任务栏，跟随所有工作区；头像可换成任意图片。</p>
+            </article>
+            <article class="card reveal">
+              <span class="card-icon"><svg class="icon"><use href="#i-drag" /></svg></span>
+              <h3>自由拖拽</h3>
+              <p>按住精灵拖到任意位置，松手即记忆；重启回到原处，靠近屏幕边缘自动钳制。</p>
+            </article>
+            <article class="card reveal">
+              <span class="card-icon"><svg class="icon"><use href="#i-window" /></svg></span>
+              <h3>单击展开</h3>
+              <p>待命时只占 72 × 72，单击展开工作台；再次点击精灵或右上角按钮即可收起。</p>
+            </article>
+            <article class="card reveal">
+              <span class="card-icon"><svg class="icon"><use href="#i-grid" /></svg></span>
+              <h3>应用启动器</h3>
+              <p>应用、网址、命令三类入口，支持增删改，可自定义图标与颜色，常用入口一屏直达。</p>
+            </article>
+            <article class="card reveal">
+              <span class="card-icon"><svg class="icon"><use href="#i-note" /></svg></span>
+              <h3>便签</h3>
+              <p>随手记录、多色彩区分，输入防抖自动保存，切走或重启都不会丢内容。</p>
+            </article>
+            <article class="card reveal">
+              <span class="card-icon"><svg class="icon"><use href="#i-timer" /></svg></span>
+              <h3>番茄钟</h3>
+              <p>专注 / 短休 / 长休循环，到点系统通知；基于时间戳计时，不受后台节流影响。</p>
+            </article>
+            <article class="card reveal">
+              <span class="card-icon"><svg class="icon"><use href="#i-clipboard" /></svg></span>
+              <h3>剪贴板历史</h3>
+              <p>自动捕获文本，最多 100 条；支持搜索、链接高亮、一键回贴、单条删除与清空。</p>
+            </article>
+            <article class="card reveal">
+              <span class="card-icon"><svg class="icon"><use href="#i-sparkles" /></svg></span>
+              <h3>快捷操作</h3>
+              <p>深浅模式切换、静音、锁屏、睡眠，以及系统设置各子页一键直达。</p>
+            </article>
+            <article class="card reveal">
+              <span class="card-icon"><svg class="icon"><use href="#i-toolbox" /></svg></span>
+              <h3>工具箱</h3>
+              <p>注册表式小工具集合，按需懒加载；内置二维码生成与解析，新增工具只需三步。</p>
+            </article>
+            <article class="card reveal">
+              <span class="card-icon"><svg class="icon"><use href="#i-user" /></svg></span>
+              <h3>账户</h3>
+              <p>手机号注册 / 登录，远端图形验证码 + 滑块人机验证，凭证仅保存在本地。</p>
+            </article>
+            <article class="card reveal">
+              <span class="card-icon"><svg class="icon"><use href="#i-sliders" /></svg></span>
+              <h3>系统集成</h3>
+              <p>托盘菜单、全局快捷键、开机自启、单实例，以及中文 / 英文界面随时切换。</p>
+            </article>
+            <article class="card reveal">
+              <span class="card-icon"><svg class="icon"><use href="#i-refresh" /></svg></span>
+              <h3>自动更新</h3>
+              <p>启动静默检查、每 6 小时轮询；发现新版本推送通知，签名校验后直接安装。</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- 架构 -->
+      <section class="section section-alt" id="architecture">
+        <div class="shell">
+          <header class="section-head reveal">
+            <p class="eyebrow">Architecture</p>
+            <h2>三层结构，各司其职</h2>
+            <p class="section-lede">UI、外壳与系统能力彼此解耦，核心 crate 不依赖 Tauri，可独立测试。</p>
+          </header>
+
+          <div class="arch-grid">
+            <div class="layers reveal">
+              <div class="layer">
+                <span class="layer-key">src/</span>
+                <div><h3>前端应用</h3><p>Vue 3 单页应用：views 页面、components 组件、Pinia 状态，api 按域封装。</p></div>
+              </div>
+              <div class="layer">
+                <span class="layer-key">src-tauri/</span>
+                <div><h3>Tauri 外壳</h3><p>窗口、托盘、插件注册与命令分发；命令是薄壳，直接委托给 Rust crates。</p></div>
+              </div>
+              <div class="layer">
+                <span class="layer-key">deskpet-store</span>
+                <div><h3>数据层</h3><p>SQLite（WAL 模式）持久化、设置读写、头像管理，不依赖 Tauri，可独立测试。</p></div>
+              </div>
+              <div class="layer">
+                <span class="layer-key">deskpet-os</span>
+                <div><h3>系统层</h3><p>应用启动、快捷操作、剪贴板访问与文件落盘，屏蔽平台差异。</p></div>
+              </div>
+
+              <div class="chips" aria-label="技术栈">
+                <span>Tauri 2</span><span>Vue 3</span><span>TypeScript</span><span>Vite</span>
+                <span>Pinia</span><span>Element Plus</span><span>Rust</span><span>rusqlite</span>
+                <span>arboard</span>
+              </div>
+            </div>
+
+            <div class="arch-side reveal" data-delay="1">
+              <div class="code-card">
+                <div class="code-head">
+                  <span class="code-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+                  <span class="code-title">从源码运行</span>
+                  <button class="copy-btn" id="copyBuild" type="button" aria-label="复制构建命令">
+                    <svg class="icon copy-ic"><use href="#i-copy" /></svg>
+                    <svg class="icon check-ic"><use href="#i-check" /></svg>
+                    <span>复制</span>
+                  </button>
+                </div>
+                <pre><code><span class="c-comment"># 需要 Node.js 20+ 与 Rust stable</span>
+npm install
+npm run tauri dev    <span class="c-comment"># 开发调试</span>
+npm run tauri build  <span class="c-comment"># 打包发布</span></code></pre>
+              </div>
+
+              <div class="data-note">
+                <h3>数据都在本地</h3>
+                <p>
+                  SQLite（<code>deskpet.db</code>）保存便签、剪贴板与启动项，<code>settings.json</code>
+                  保存设置，位于 <code>~/Library/Application Support/com.deskpet.desktop/</code>
+                  （Windows 为 <code>%APPDATA%\com.deskpet.desktop\</code>）。
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 平台 -->
+      <section class="section" id="platform">
+        <div class="shell">
+          <header class="section-head reveal">
+            <p class="eyebrow">Platform</p>
+            <h2>macOS 与 Windows 优先</h2>
+            <p class="section-lede">桌面能力按平台分别实现，差异写在明面上。</p>
+          </header>
+
+          <div class="table-card reveal">
+            <div class="table-wrap" tabindex="0" role="region" aria-label="平台支持对照表（可横向滚动）">
+              <table>
+                <caption class="sr-only">各平台功能支持情况</caption>
+                <thead>
+                  <tr><th scope="col">功能</th><th scope="col">macOS</th><th scope="col">Windows</th></tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <th scope="row">漂浮 / 置顶 / 拖拽 / 位置记忆</th>
+                    <td><span class="yes">支持</span></td>
+                    <td><span class="yes">支持</span></td>
+                  </tr>
+                  <tr>
+                    <th scope="row">启动器 / 便签 / 番茄钟 / 剪贴板</th>
+                    <td><span class="yes">支持</span></td>
+                    <td><span class="yes">支持</span></td>
+                  </tr>
+                  <tr>
+                    <th scope="row">深浅模式切换、静音</th>
+                    <td><span class="yes">支持</span><sup class="fn">*</sup></td>
+                    <td><span class="no">暂不支持</span></td>
+                  </tr>
+                  <tr>
+                    <th scope="row">锁屏 / 睡眠 / 系统设置跳转</th>
+                    <td><span class="yes">支持</span></td>
+                    <td><span class="yes">支持</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="table-footnote"><span aria-hidden="true">*</span> 首次使用需在系统弹窗中授权自动化。</p>
+          </div>
+
+          <div class="limits reveal">
+            <h3>已知限制</h3>
+            <ul>
+              <li>精灵窗口为矩形，透明边角仍会遮挡下方桌面的点击（点击穿透暂未实现）。</li>
+              <li>置顶窗口无法悬浮在 macOS 原生全屏应用之上。</li>
+              <li>剪贴板历史仅记录文本，不包含图片。</li>
+              <li>Linux（尤其 Wayland 下的透明与置顶）暂不在支持范围。</li>
+              <li>透明窗口依赖 macOS 私有 API，因此不通过 Mac App Store 分发。</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- 开始使用 -->
+      <section class="section" id="start">
+        <div class="shell">
+          <div class="start-card reveal">
+            <div class="start-copy">
+              <p class="eyebrow">Get started</p>
+              <h2>下载，或者自己构建</h2>
+              <p>
+                安装包由 GitHub Actions 自动构建：推送 <code>v*</code> 标签后，macOS（arm64 / x64）与
+                Windows 版本会同步产出，并附带签名更新清单。
+              </p>
+              <div class="cta-row">
+                <a
+                  class="btn btn-primary"
+                  href="https://github.com/ht-shaipe/desk-pet/releases/latest"
+                  target="_blank"
+                  rel="noreferrer noopener"
+                >
+                  <svg class="icon"><use href="#i-download" /></svg>前往 Releases
+                </a>
+                <a
+                  class="btn btn-ghost"
+                  href="https://github.com/ht-shaipe/desk-pet#readme"
+                  target="_blank"
+                  rel="noreferrer noopener"
+                >
+                  阅读文档<svg class="icon"><use href="#i-arrow" /></svg>
+                </a>
+              </div>
+            </div>
+            <ul class="start-facts">
+              <li>
+                <svg class="icon"><use href="#i-check" /></svg>
+                <div><strong>前置要求</strong><span>Node.js 20+、Rust stable 工具链</span></div>
+              </li>
+              <li>
+                <svg class="icon"><use href="#i-check" /></svg>
+                <div><strong>体积轻量</strong><span>复用系统 WebView，不打包 Chromium</span></div>
+              </li>
+              <li>
+                <svg class="icon"><use href="#i-check" /></svg>
+                <div><strong>更新有签名</strong><span>Tauri Updater 校验后再安装</span></div>
+              </li>
+              <li>
+                <svg class="icon"><use href="#i-check" /></svg>
+                <div><strong>数据可迁移</strong><span>首次启动自动迁移旧版 JSON 并保留备份</span></div>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="shell footer-inner">
+        <div class="footer-brand">
+          <span class="brand-mark small"><img src="assets/icon.png" alt="" width="22" height="22" /></span>
+          <div>
+            <strong>Desk Pet</strong>
+            <span>桌面上的小精灵</span>
+          </div>
+        </div>
+        <nav class="footer-nav" aria-label="页脚导航">
+          <a href="#features">功能</a>
+          <a href="#architecture">架构</a>
+          <a href="https://github.com/ht-shaipe/desk-pet/releases/latest" target="_blank" rel="noreferrer noopener">下载</a>
+          <a href="https://github.com/ht-shaipe/desk-pet" target="_blank" rel="noreferrer noopener">GitHub</a>
+        </nav>
+        <p class="footer-copy">© 2026 Desk Pet · 使用 Tauri 2 与 Rust 构建</p>
+      </div>
+    </footer>
+
+    <script src="assets/app.js" defer></script>
+  </body>
+</html>

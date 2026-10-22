@@ -54,6 +54,11 @@ function onHeaderPointerdown(e: PointerEvent) {
 function tabTip(label: string, view: PanelView): string {
   return view === "pomodoro" && pomodoro.running ? `${label} · ${pomodoro.display}` : label;
 }
+
+/** 隐藏 Dock（accessory）模式下应用点击不会自动激活，键盘输入失效；点击面板内容时主动取焦点。 */
+function onBodyPointerdown() {
+  void win.setFocus();
+}
 </script>
 
 <template>
@@ -97,7 +102,7 @@ function tabTip(label: string, view: PanelView): string {
         </button>
       </el-tooltip>
     </nav>
-    <div class="panel-body">
+    <div class="panel-body" @pointerdown="onBodyPointerdown">
       <Transition name="view-fade" mode="out-in">
         <Launcher v-if="ui.activeView === 'launcher'" />
         <Notes v-else-if="ui.activeView === 'notes'" />
