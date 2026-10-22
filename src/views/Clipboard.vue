@@ -2,12 +2,17 @@
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { ElMessage } from "element-plus";
-import { Delete, Search } from "@element-plus/icons-vue";
+import { Delete, Link, Search } from "@element-plus/icons-vue";
 import { useClipboardStore } from "@/stores/clipboard";
 
 const { t } = useI18n();
 const store = useClipboardStore();
 const keyword = ref("");
+
+/** 识别 URL 类内容，链接文本用主题色呈现。 */
+function isUrl(text: string): boolean {
+  return /^https?:\/\//i.test(text.trim());
+}
 
 const filtered = computed(() => {
   const k = keyword.value.trim().toLowerCase();
