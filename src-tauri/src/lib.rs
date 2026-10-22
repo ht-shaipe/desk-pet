@@ -1,5 +1,6 @@
-mod commands;
+mod paths;
 mod state;
+mod tauri_cmds;
 mod tray;
 
 pub fn run() {
@@ -13,36 +14,40 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
-            commands::config::get_settings,
-            commands::config::save_settings,
-            commands::config::get_launcher,
-            commands::config::save_launcher,
-            commands::notes::get_notes,
-            commands::notes::save_notes,
-            commands::launcher::launch_item,
-            commands::clipboard::get_clipboard_history,
-            commands::clipboard::clear_clipboard_history,
-            commands::clipboard::delete_clipboard_entry,
-            commands::clipboard::copy_to_clipboard,
-            commands::system::quick_action,
-            commands::system::get_platform,
-            commands::toolbox::get_clipboard_image,
-            commands::toolbox::set_clipboard_image,
-            commands::toolbox::save_qr_png,
+            tauri_cmds::settings_cmds::get_settings,
+            tauri_cmds::settings_cmds::save_settings,
+            tauri_cmds::settings_cmds::set_pet_avatar,
+            tauri_cmds::settings_cmds::reset_pet_avatar,
+            tauri_cmds::launcher_cmds::get_launcher,
+            tauri_cmds::launcher_cmds::save_launcher,
+            tauri_cmds::launcher_cmds::launch_item,
+            tauri_cmds::notes_cmds::get_notes,
+            tauri_cmds::notes_cmds::save_notes,
+            tauri_cmds::clipboard_cmds::get_clipboard_history,
+            tauri_cmds::clipboard_cmds::clear_clipboard_history,
+            tauri_cmds::clipboard_cmds::delete_clipboard_entry,
+            tauri_cmds::clipboard_cmds::copy_to_clipboard,
+            tauri_cmds::system_cmds::quick_action,
+            tauri_cmds::system_cmds::get_platform,
+            tauri_cmds::toolbox_cmds::get_clipboard_image,
+            tauri_cmds::toolbox_cmds::set_clipboard_image,
+            tauri_cmds::toolbox_cmds::save_qr_png,
         ])
         .setup(|app| {
-            use commands::config::read_json_or_default;
             use tauri::{Listener, Manager};
+            use tauri_cmds::settings_cmds::{AppSettings, read_json_or_default};
 
             let handle = app.handle();
-            let db = commands::db::init_db(handle)?;
-            handle.manage(state::AppState::new(db));
+            let dir = paths::data_dir(handle)?;
+            let store = deskpet_store::Store::open(&dir)?;
+            handle.manage(state::AppState::new(store));
 
-            let settings = read_json_or_default::<commands::config::AppSettings>(handle, "settings.json");
+            let settings = read_json_or_default::<AppSettings>(handle, "settings.json");
             let locale = settings.locale.unwrap_or_else(|| "zh-CN".to_string());
             tray::create_tray(handle, &locale)?;
-            commands::clipboard::start_poll(handle.clone());
+            tauri_cmds::clipboard_cmds::start_poll(handle.clone());
 
             // 界面语言切换时重建托盘菜单
             let h = handle.clone();

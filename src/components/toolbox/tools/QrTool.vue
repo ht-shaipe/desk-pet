@@ -5,7 +5,8 @@ import { ElMessage } from "element-plus";
 import { CopyDocument, DocumentChecked, Download, Picture, Upload } from "@element-plus/icons-vue";
 import QRCode from "qrcode";
 import jsQR from "jsqr";
-import { copyToClipboard, getClipboardImage, saveQrPng, setClipboardImage } from "@/api";
+import { copyToClipboard } from "@/api/clipboard";
+import { getClipboardImage, saveQrPng, setClipboardImage } from "@/api/toolbox";
 import type { ImagePayload } from "@/types";
 
 const { t } = useI18n();

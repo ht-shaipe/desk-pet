@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
-import { getNotes, saveNotes } from "@/api";
+import { getNotes, saveNotes } from "@/api/notes";
 import type { Note } from "@/types";
 
 const PALETTE = ["#fef3c7", "#dcfce7", "#dbeafe", "#fce7f3", "#ede9fe"];

@@ -7,7 +7,7 @@ import {
   copyToClipboard,
   deleteClipboardEntry,
   getClipboardHistory,
-} from "@/api";
+} from "@/api/clipboard";
 import type { ClipEntry } from "@/types";
 
 export const useClipboardStore = defineStore("clipboard", () => {

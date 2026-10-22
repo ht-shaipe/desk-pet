@@ -2,10 +2,11 @@ import { defineStore } from "pinia";
 import { ref } from "vue";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { emit } from "@tauri-apps/api/event";
-import { getPlatform, getSettings, saveSettings } from "@/api";
+import { getPlatform } from "@/api/system";
+import { getSettings, saveSettings, setPetAvatar, resetPetAvatar } from "@/api/settings";
 import type { AppSettings, ThemeMode } from "@/types";
 import { detectLocale, setAppLocale, type AppLocale } from "@/i18n";
-import { initWindowPosition } from "@/utils/windowCtl";
+import { initWindowPosition } from "@/lib/windowCtl";
 import { useUiStore } from "./ui";
 
 const win = getCurrentWindow();
@@ -18,9 +19,12 @@ function normalizeLocale(value: string | null): AppLocale {
   return detectLocale();
 }
 
-/** 归一化主题值，非法值回退为浅色。 */
+/** 归一化主题值：light | dark | auto，缺省/非法回退为 auto（跟随系统）。 */
 function normalizeTheme(value: string | null | undefined): ThemeMode {
-  return value === "dark" ? "dark" : "light";
+  if (value === "light" || value === "dark" || value === "auto") {
+    return value;
+  }
+  return "auto";
 }
 
 /** 归一化精灵大小：钳制到 32-64（呼吸动画峰值不超出 72px 窗口）。 */
@@ -64,6 +68,7 @@ function applyAccentColor(color: string | null | undefined) {
   const root = document.documentElement;
   if (!color) {
     root.style.removeProperty("--dp-accent");
+    root.style.removeProperty("--dp-accent-deep");
     root.style.removeProperty("--el-color-primary");
     root.style.removeProperty("--el-color-primary-light-3");
     root.style.removeProperty("--el-color-primary-light-5");
@@ -75,6 +80,7 @@ function applyAccentColor(color: string | null | undefined) {
   }
   const full = color.length === 4 ? mixHex(color, color, 0) : color;
   root.style.setProperty("--dp-accent", full);
+  root.style.setProperty("--dp-accent-deep", mixHex(full, "#000000", 0.18));
   root.style.setProperty("--el-color-primary", full);
   root.style.setProperty("--el-color-primary-light-3", mixHex(full, "#ffffff", 0.3));
   root.style.setProperty("--el-color-primary-light-5", mixHex(full, "#ffffff", 0.5));
@@ -84,10 +90,21 @@ function applyAccentColor(color: string | null | undefined) {
   root.style.setProperty("--el-color-primary-dark-2", mixHex(full, "#000000", 0.2));
 }
 
-/** 把主题同步到 DOM（html.dark 同时驱动自研变量与 Element Plus 暗色变量）。 */
+/** 把主题同步到 DOM（html.dark 同时驱动自研变量与 Element Plus 暗色变量）。auto 跟随系统。 */
+let currentTheme: ThemeMode = "auto";
+const darkMedia = window.matchMedia("(prefers-color-scheme: dark)");
+
 function applyTheme(theme: ThemeMode) {
-  document.documentElement.classList.toggle("dark", theme === "dark");
+  currentTheme = theme;
+  const dark = theme === "auto" ? darkMedia.matches : theme === "dark";
+  document.documentElement.classList.toggle("dark", dark);
 }
+
+darkMedia.addEventListener("change", () => {
+  if (currentTheme === "auto") {
+    document.documentElement.classList.toggle("dark", darkMedia.matches);
+  }
+});
 
 export const useConfigStore = defineStore("config", () => {
   const settings = ref<AppSettings>({
@@ -95,7 +112,7 @@ export const useConfigStore = defineStore("config", () => {
     pet_y: null,
     always_on_top: true,
     locale: null,
-    theme: "light",
+    theme: "auto",
     sprite_size: 48,
     accent_color: null,
   });
@@ -110,7 +127,9 @@ export const useConfigStore = defineStore("config", () => {
       clearTimeout(persistTimer);
     }
     persistTimer = setTimeout(() => {
-      void saveSettings(settings.value);
+      saveSettings(settings.value).catch((err) => {
+        console.error("[desk-pet] 设置保存失败:", err);
+      });
     }, 500);
   }
 
@@ -183,6 +202,19 @@ export const useConfigStore = defineStore("config", () => {
     schedulePersist();
   }
 
+  /** 更换精灵头像：拷贝图片到 app data 并记录路径。 */
+  async function changePetAvatar(src: string) {
+    settings.value.pet_avatar = await setPetAvatar(src);
+    schedulePersist();
+  }
+
+  /** 恢复默认精灵头像：删除自定义文件并清空配置。 */
+  async function resetPetAvatarConfig() {
+    await resetPetAvatar();
+    settings.value.pet_avatar = null;
+    schedulePersist();
+  }
+
   async function init() {
     platform.value = await getPlatform();
     const s = await getSettings();
@@ -198,6 +230,7 @@ export const useConfigStore = defineStore("config", () => {
       accent_color: normalizeAccentColor(s.accent_color),
       auth_token: s.auth_token ?? null,
       auth_user: s.auth_user ?? null,
+      pet_avatar: typeof s.pet_avatar === "string" ? s.pet_avatar : null,
     };
     setAppLocale(locale);
     applyTheme(theme);
@@ -221,5 +254,7 @@ export const useConfigStore = defineStore("config", () => {
     setAccentColor,
     setAuth,
     logout,
+    changePetAvatar,
+    resetPetAvatarConfig,
   };
 });

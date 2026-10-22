@@ -1,4 +1,4 @@
-export type ThemeMode = "light" | "dark";
+export type ThemeMode = "light" | "dark" | "auto";
 
 export interface AppSettings {
   pet_x: number | null;
@@ -10,6 +10,7 @@ export interface AppSettings {
   accent_color?: string | null;
   auth_token?: string | null;
   auth_user?: string | null;
+  pet_avatar?: string | null;
 }
 
 export type LaunchType = "app" | "url" | "command";

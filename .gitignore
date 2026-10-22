@@ -12,6 +12,11 @@ dist
 dist-ssr
 *.local
 
+# Rust
+/target/
+# 应用工程需提交 Cargo.lock 保证构建可复现
+!Cargo.lock
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

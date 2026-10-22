@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
-import { getLauncher, saveLauncher } from "@/api";
+import { getLauncher, saveLauncher } from "@/api/launcher";
 import type { LauncherItem } from "@/types";
 import { i18n } from "@/i18n";
 import { useConfigStore } from "./config";

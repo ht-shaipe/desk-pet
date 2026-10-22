@@ -2,14 +2,14 @@
 import { onMounted, onUnmounted, watch } from "vue";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { UnlistenFn } from "@tauri-apps/api/event";
-import PetSprite from "@/components/PetSprite.vue";
-import PanelContainer from "@/components/PanelContainer.vue";
+import PetSprite from "@/components/pet/PetSprite.vue";
+import PanelContainer from "@/components/layout/PanelContainer.vue";
 import { useUiStore } from "@/stores/ui";
 import { useConfigStore } from "@/stores/config";
 import { useClipboardStore } from "@/stores/clipboard";
 import { useLauncherStore } from "@/stores/launcher";
 import { useNotesStore } from "@/stores/notes";
-import { collapseWindow, expandWindow, rememberPanelSize } from "@/utils/windowCtl";
+import { collapseWindow, expandWindow, rememberPanelSize } from "@/lib/windowCtl";
 
 const ui = useUiStore();
 const config = useConfigStore();

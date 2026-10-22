@@ -1,17 +1,17 @@
 use std::sync::Mutex;
 
-use crate::commands::clipboard::ClipEntry;
+use deskpet_store::{ClipEntry, Store};
 
 pub struct AppState {
     pub clipboard: Mutex<Vec<ClipEntry>>,
-    pub db: Mutex<rusqlite::Connection>,
+    pub store: Mutex<Store>,
 }
 
 impl AppState {
-    pub fn new(db: rusqlite::Connection) -> Self {
+    pub fn new(store: Store) -> Self {
         Self {
             clipboard: Mutex::new(Vec::new()),
-            db: Mutex::new(db),
+            store: Mutex::new(store),
         }
     }
 }

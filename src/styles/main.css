@@ -22,6 +22,7 @@
   --dp-text-muted: #6b7280;
   --dp-text-tertiary: #9ca3af;
   --dp-accent: #409eff;
+  --dp-accent-deep: #2f7de1;
   --dp-danger-soft: #fef0f0;
   --dp-note-input-bg: rgba(255, 255, 255, 0.65);
   --dp-dot-border: rgba(31, 41, 55, 0.15);
@@ -45,6 +46,7 @@ html.dark {
   --dp-text-muted: #9aa4b2;
   --dp-text-tertiary: #6b7280;
   --dp-accent: #4ba3ff;
+  --dp-accent-deep: #2f7de1;
   --dp-danger-soft: rgba(245, 108, 108, 0.15);
   --dp-note-input-bg: rgba(0, 0, 0, 0.25);
   --dp-dot-border: rgba(255, 255, 255, 0.2);
