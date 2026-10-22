@@ -27,7 +27,10 @@
     "process:allow-restart",
     {
       "identifier": "http:default",
-      "allow": [{ "url": "https://hub.htui.cc/*" }]
+      "allow": [
+        { "url": "https://**" },
+        { "url": "http://**" }
+      ]
     }
   ]
 }

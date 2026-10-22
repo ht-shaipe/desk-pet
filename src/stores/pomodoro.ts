@@ -5,6 +5,7 @@ import {
   requestPermission,
   sendNotification,
 } from "@tauri-apps/plugin-notification";
+import { emit } from "@tauri-apps/api/event";
 import { i18n } from "@/i18n";
 
 export type PomoMode = "focus" | "short" | "long";
@@ -87,9 +88,18 @@ export const usePomodoroStore = defineStore("pomodoro", () => {
       focusDone.value += 1;
       const next: PomoMode = focusDone.value % 4 === 0 ? "long" : "short";
       void notify(t("pomodoro.notifTitle"), t("pomodoro.notifFocusDone"));
+      // 屏幕大字提醒浮层（notify 窗口监听）
+      void emit("pomodoro://session-done", {
+        title: t("pomodoro.overlayFocusTitle"),
+        message: t("pomodoro.overlayFocusMsg"),
+      });
       setMode(next);
     } else {
       void notify(t("pomodoro.notifTitle"), t("pomodoro.notifBreakDone"));
+      void emit("pomodoro://session-done", {
+        title: t("pomodoro.overlayBreakTitle"),
+        message: t("pomodoro.overlayBreakMsg"),
+      });
       setMode("focus");
     }
   }

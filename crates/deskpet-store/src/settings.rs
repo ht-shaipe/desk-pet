@@ -4,6 +4,26 @@ use std::path::Path;
 
 use crate::Result;
 
+/// AI 模型配置（OpenAI 兼容接口）。
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct AiModel {
+    pub id: String,
+    pub name: String,
+    /// 接口基础地址，如 https://api.openai.com/v1
+    pub base_url: String,
+    pub api_key: String,
+    /// 模型名，如 gpt-4o-mini
+    pub model: String,
+}
+
+/// 聊天消息。
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ChatMessage {
+    /// user | assistant
+    pub role: String,
+    pub content: String,
+}
+
 /// 应用设置（settings.json）。
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct AppSettings {
@@ -33,6 +53,18 @@ pub struct AppSettings {
     /// 应用显示名称，缺省为 "Desk Pet"
     #[serde(default)]
     pub app_name: Option<String>,
+    /// 是否在 Dock 中显示（仅 macOS），缺省 true
+    #[serde(default)]
+    pub show_dock: Option<bool>,
+    /// AI 模型配置列表
+    #[serde(default)]
+    pub ai_models: Vec<AiModel>,
+    /// 当前使用的 AI 模型 id
+    #[serde(default)]
+    pub ai_active: Option<String>,
+    /// 聊天历史（不与远端同步）
+    #[serde(default)]
+    pub ai_messages: Vec<ChatMessage>,
 }
 
 impl Default for AppSettings {
@@ -49,6 +81,10 @@ impl Default for AppSettings {
             auth_user: None,
             pet_avatar: None,
             app_name: None,
+            show_dock: None,
+            ai_models: Vec::new(),
+            ai_active: None,
+            ai_messages: Vec::new(),
         }
     }
 }

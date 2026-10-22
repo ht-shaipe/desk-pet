@@ -25,6 +25,8 @@ pub fn run() {
             tauri_cmds::launcher_cmds::get_launcher,
             tauri_cmds::launcher_cmds::save_launcher,
             tauri_cmds::launcher_cmds::launch_item,
+            tauri_cmds::launcher_cmds::get_app_icon,
+            tauri_cmds::launcher_cmds::list_apps,
             tauri_cmds::notes_cmds::get_notes,
             tauri_cmds::notes_cmds::save_notes,
             tauri_cmds::clipboard_cmds::get_clipboard_history,
@@ -33,6 +35,7 @@ pub fn run() {
             tauri_cmds::clipboard_cmds::copy_to_clipboard,
             tauri_cmds::system_cmds::quick_action,
             tauri_cmds::system_cmds::get_platform,
+            tauri_cmds::system_cmds::set_show_dock,
             tauri_cmds::toolbox_cmds::get_clipboard_image,
             tauri_cmds::toolbox_cmds::set_clipboard_image,
             tauri_cmds::toolbox_cmds::save_qr_png,
@@ -47,8 +50,12 @@ pub fn run() {
             handle.manage(state::AppState::new(store));
 
             let settings = deskpet_store::settings::load(&dir);
-            let locale = settings.locale.unwrap_or_else(|| "zh-CN".to_string());
-            let app_name = settings.app_name.unwrap_or_else(|| "Desk Pet".to_string());
+            let locale = settings.locale.clone().unwrap_or_else(|| "zh-CN".to_string());
+            let app_name = settings.app_name.clone().unwrap_or_else(|| "Desk Pet".to_string());
+
+            // 启动时应用「在 Dock 中显示」设置（仅 macOS，缺省显示）
+            #[cfg(target_os = "macos")]
+            let _ = handle.set_dock_visibility(settings.show_dock.unwrap_or(true));
             tray::create_tray(handle, &locale, &app_name)?;
             tauri_cmds::clipboard_cmds::start_poll(handle.clone());
 

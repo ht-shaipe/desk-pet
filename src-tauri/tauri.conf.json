@@ -5,7 +5,7 @@
   "identifier": "com.deskpet.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
-    "devUrl": "http://localhost:1420",
+    "devUrl": "http://localhost:1820",
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist"
   },
@@ -24,6 +24,21 @@
         "skipTaskbar": true,
         "resizable": false,
         "visibleOnAllWorkspaces": true
+      },
+      {
+        "label": "notify",
+        "title": "Desk Pet",
+        "url": "notify.html",
+        "width": 460,
+        "height": 190,
+        "transparent": true,
+        "decorations": false,
+        "shadow": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "resizable": false,
+        "focus": false,
+        "visible": false
       }
     ],
     "security": {

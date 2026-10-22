@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from "vue";
+import { computed, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { ElMessage } from "element-plus";
 import { Delete, EditPen, Plus, Setting } from "@element-plus/icons-vue";
-import { launchItem } from "@/api/launcher";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { getAppIcon, launchItem, listApps } from "@/api/launcher";
 import { useLauncherStore } from "@/stores/launcher";
 import { useConfigStore } from "@/stores/config";
-import type { LaunchType, LauncherItem } from "@/types";
+import type { AppEntry, LaunchType, LauncherItem } from "@/types";
 
 const { t } = useI18n();
 const store = useLauncherStore();
@@ -57,16 +58,72 @@ async function onLaunch(item: LauncherItem) {
   }
 }
 
+/** 系统应用图标（asset 协议地址），提取失败回退为文字图标。 */
+const iconUrls = ref<Record<string, string>>({});
+
+async function loadIcons() {
+  for (const item of store.items) {
+    if (item.item_type !== "app" || iconUrls.value[item.id]) {
+      continue;
+    }
+    try {
+      const path = await getAppIcon(item);
+      if (path) {
+        iconUrls.value[item.id] = convertFileSrc(path);
+      }
+    } catch {
+      // 无法提取时保持文字图标
+    }
+  }
+}
+
+watch(() => store.items.map((i) => `${i.id}:${i.item_type}:${i.value}`).join("|"), loadIcons, {
+  immediate: true,
+});
+
 function openAdd() {
   editingId.value = null;
   Object.assign(form, emptyForm());
+  void ensureApps();
   dialogVisible.value = true;
 }
 
 function openEdit(item: LauncherItem) {
   editingId.value = item.id;
   Object.assign(form, item);
+  void ensureApps();
   dialogVisible.value = true;
+}
+
+/** 系统应用列表（懒加载 + 缓存）。 */
+const apps = ref<AppEntry[]>([]);
+let appsLoaded = false;
+
+async function ensureApps() {
+  if (appsLoaded) {
+    return;
+  }
+  appsLoaded = true;
+  try {
+    apps.value = await listApps();
+  } catch {
+    appsLoaded = false;
+  }
+}
+
+/** 选择应用时自动补全名称。 */
+function onAppPicked(value: string) {
+  const app = apps.value.find((a) => a.value === value);
+  if (app && !form.name.trim()) {
+    form.name = app.name;
+  }
+}
+
+/** 切换为应用类型时确保应用列表已加载。 */
+function onTypeChange() {
+  if (form.item_type === "app") {
+    void ensureApps();
+  }
 }
 
 function confirmDialog() {
@@ -112,8 +169,12 @@ function confirmDialog() {
           <span v-if="editMode" class="item-delete" @click.stop="store.removeItem(item.id)">
             <el-icon :size="8"><Delete /></el-icon>
           </span>
-          <span class="item-avatar" :style="{ background: item.color || '#909399' }">
-            {{ item.icon || item.name.slice(0, 1) }}
+          <span
+            class="item-avatar"
+            :style="iconUrls[item.id] ? {} : { background: item.color || '#909399' }"
+          >
+            <img v-if="iconUrls[item.id]" class="item-icon-img" :src="iconUrls[item.id]" alt="" />
+            <template v-else>{{ item.icon || item.name.slice(0, 1) }}</template>
           </span>
           <span class="item-name" :title="item.name">{{ item.name }}</span>
         </div>
@@ -146,12 +207,23 @@ function confirmDialog() {
           <el-input v-model="form.name" :placeholder="t('launcher.namePh')" maxlength="20" />
         </el-form-item>
         <el-form-item :label="t('launcher.type')">
-          <el-select v-model="form.item_type">
+          <el-select v-model="form.item_type" @change="onTypeChange">
             <el-option v-for="opt in typeOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
           </el-select>
         </el-form-item>
         <el-form-item :label="t('launcher.value')">
-          <el-input v-model="form.value" :placeholder="valuePlaceholder" />
+          <el-select
+            v-if="form.item_type === 'app'"
+            v-model="form.value"
+            filterable
+            allow-create
+            default-first-option
+            :placeholder="valuePlaceholder"
+            @change="onAppPicked"
+          >
+            <el-option v-for="app in apps" :key="app.value" :label="app.name" :value="app.value" />
+          </el-select>
+          <el-input v-else v-model="form.value" :placeholder="valuePlaceholder" />
         </el-form-item>
         <el-form-item :label="t('launcher.iconLabel')">
           <el-input v-model="form.icon" maxlength="2" :placeholder="t('launcher.iconPh')" />
@@ -215,6 +287,13 @@ function confirmDialog() {
 .add-avatar {
   background: var(--dp-btn-hover-bg);
   color: var(--dp-text-muted);
+}
+
+/* 系统应用真实图标 */
+.item-icon-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .item-name {

@@ -2,9 +2,9 @@ import { defineStore } from "pinia";
 import { ref } from "vue";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { emit } from "@tauri-apps/api/event";
-import { getPlatform } from "@/api/system";
+import { getPlatform, setShowDock as invokeSetShowDock } from "@/api/system";
 import { getSettings, saveSettings, setPetAvatar, resetPetAvatar } from "@/api/settings";
-import type { AppSettings, ThemeMode } from "@/types";
+import type { AiModel, AppSettings, ChatMessage, ThemeMode } from "@/types";
 import { detectLocale, setAppLocale, type AppLocale } from "@/i18n";
 import { initWindowPosition } from "@/lib/windowCtl";
 import { useUiStore } from "./ui";
@@ -52,6 +52,58 @@ function normalizeAppName(value: string | null | undefined): string {
   }
   const trimmed = value.trim().slice(0, 24);
   return trimmed.length > 0 ? trimmed : DEFAULT_APP_NAME;
+}
+
+/** 生成模型配置 id（时间戳 + 随机后缀，足够本地唯一）。 */
+function genAiModelId(): string {
+  return `m-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/** 归一化模型配置列表：剔除 id/必要字段缺失的脏数据。 */
+function normalizeAiModels(value: unknown): AiModel[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const models: AiModel[] = [];
+  for (const item of value) {
+    if (typeof item !== "object" || item === null) {
+      continue;
+    }
+    const raw = item as Record<string, unknown>;
+    if (typeof raw.id !== "string" || !raw.id) {
+      continue;
+    }
+    models.push({
+      id: raw.id,
+      name: typeof raw.name === "string" ? raw.name : "",
+      base_url: typeof raw.base_url === "string" ? raw.base_url : "",
+      api_key: typeof raw.api_key === "string" ? raw.api_key : "",
+      model: typeof raw.model === "string" ? raw.model : "",
+    });
+  }
+  return models;
+}
+
+/** 归一化聊天历史：只保留 user/assistant 角色的字符串内容。 */
+function normalizeChatMessages(value: unknown): ChatMessage[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const messages: ChatMessage[] = [];
+  for (const item of value) {
+    if (typeof item !== "object" || item === null) {
+      continue;
+    }
+    const raw = item as Record<string, unknown>;
+    if (typeof raw.role !== "string" || typeof raw.content !== "string") {
+      continue;
+    }
+    if (raw.role !== "user" && raw.role !== "assistant") {
+      continue;
+    }
+    messages.push({ role: raw.role, content: raw.content });
+  }
+  return messages;
 }
 
 function hexToRgb(hex: string): [number, number, number] {
@@ -235,6 +287,63 @@ export const useConfigStore = defineStore("config", () => {
     schedulePersist();
   }
 
+  /** 新增 AI 模型配置，返回生成的 id。 */
+  async function addAiModel(model: Omit<AiModel, "id">): Promise<string> {
+    const id = genAiModelId();
+    settings.value.ai_models = [...(settings.value.ai_models ?? []), { ...model, id }];
+    // 首个模型自动设为当前使用
+    if (!settings.value.ai_active) {
+      settings.value.ai_active = id;
+    }
+    schedulePersist();
+    return id;
+  }
+
+  /** 更新 AI 模型配置。 */
+  async function updateAiModel(model: AiModel) {
+    const list = settings.value.ai_models ?? [];
+    const idx = list.findIndex((m) => m.id === model.id);
+    if (idx === -1) {
+      return;
+    }
+    const next = [...list];
+    next[idx] = { ...model };
+    settings.value.ai_models = next;
+    schedulePersist();
+  }
+
+  /** 删除 AI 模型配置；删除当前使用项时切到首个可用模型。 */
+  async function removeAiModel(id: string) {
+    const list = (settings.value.ai_models ?? []).filter((m) => m.id !== id);
+    settings.value.ai_models = list;
+    if (settings.value.ai_active === id) {
+      settings.value.ai_active = list.length > 0 ? list[0].id : null;
+    }
+    schedulePersist();
+  }
+
+  /** 切换当前使用的 AI 模型。 */
+  async function setActiveAiModel(id: string) {
+    if (!(settings.value.ai_models ?? []).some((m) => m.id === id)) {
+      return;
+    }
+    settings.value.ai_active = id;
+    schedulePersist();
+  }
+
+  /** 保存聊天历史（流式输出中高频调用，走防抖持久化）。 */
+  async function setAiMessages(messages: ChatMessage[]) {
+    settings.value.ai_messages = messages;
+    schedulePersist();
+  }
+
+  /** 切换是否在 Dock 中显示（仅 macOS）。 */
+  async function setShowDock(visible: boolean) {
+    settings.value.show_dock = visible;
+    await invokeSetShowDock(visible);
+    schedulePersist();
+  }
+
   async function init() {
     platform.value = await getPlatform();
     const s = await getSettings();
@@ -252,6 +361,10 @@ export const useConfigStore = defineStore("config", () => {
       auth_user: s.auth_user ?? null,
       pet_avatar: typeof s.pet_avatar === "string" ? s.pet_avatar : null,
       app_name: normalizeAppName(s.app_name),
+      show_dock: typeof s.show_dock === "boolean" ? s.show_dock : true,
+      ai_models: normalizeAiModels(s.ai_models),
+      ai_active: typeof s.ai_active === "string" ? s.ai_active : null,
+      ai_messages: normalizeChatMessages(s.ai_messages),
     };
     setAppLocale(locale);
     applyTheme(theme);
@@ -278,5 +391,11 @@ export const useConfigStore = defineStore("config", () => {
     logout,
     changePetAvatar,
     resetPetAvatarConfig,
+    addAiModel,
+    updateAiModel,
+    removeAiModel,
+    setActiveAiModel,
+    setAiMessages,
+    setShowDock,
   };
 });

@@ -887,6 +887,7 @@ version = "0.1.0"
 dependencies = [
  "arboard",
  "base64 0.22.1",
+ "plist",
  "serde",
  "tempfile",
  "thiserror 2.0.21",

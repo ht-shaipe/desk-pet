@@ -9,6 +9,7 @@ import { useUpdater } from "@/composables/useUpdater";
 
 const { t } = useI18n();
 const config = useConfigStore();
+const activeTab = ref("general");
 const autostart = ref(false);
 const presetColors = ["#3d8bfd", "#7265e6", "#67c23a", "#e6a23c", "#f56c6c", "#00a2ae", "#eb2f96"];
 
@@ -141,141 +142,161 @@ async function onAutostart(val: string | number | boolean) {
 
 <template>
   <div class="settings-view">
-    <div class="view-toolbar">
+    <!-- <div class="view-toolbar">
       <span class="toolbar-title">{{ t("settings.title") }}</span>
-    </div>
-    <el-scrollbar class="view-scroll">
-      <div class="settings-list">
-        <div class="settings-row">
-          <div class="row-info">
-            <div class="row-title">{{ t("settings.appName") }}</div>
-            <div class="row-desc">{{ t("settings.appNameDesc") }}</div>
-          </div>
-          <el-input
-            v-model="appNameModel"
-            size="small"
-            maxlength="24"
-            class="app-name-input"
-            :placeholder="config.settings.app_name ?? 'Desk Pet'"
-            @change="onAppNameChange"
-          />
-        </div>
-        <div class="settings-row">
-          <div class="row-info">
-            <div class="row-title">{{ t("settings.lang") }}</div>
-            <div class="row-desc">{{ t("settings.langDesc") }}</div>
-          </div>
-          <el-select
-            :model-value="config.settings.locale"
-            size="small"
-            style="width: 120px"
-            @change="onLocaleChange"
-          >
-            <el-option label="中文" value="zh-CN" />
-            <el-option label="English" value="en" />
-          </el-select>
-        </div>
-        <div class="settings-row">
-          <div class="row-info">
-            <div class="row-title">{{ t("settings.theme") }}</div>
-            <div class="row-desc">{{ t("settings.themeDesc") }}</div>
-          </div>
-          <el-select v-model="themeModel" size="small" style="width: 120px">
-            <el-option :label="t('settings.themeAuto')" value="auto" />
-            <el-option :label="t('settings.themeLight')" value="light" />
-            <el-option :label="t('settings.themeDark')" value="dark" />
-          </el-select>
-        </div>
-        <div class="settings-row">
-          <div class="row-info">
-            <div class="row-title">{{ t("settings.avatar") }}</div>
-            <div class="row-desc">{{ t("settings.avatarDesc") }}</div>
-          </div>
-          <div class="accent-picker">
-            <el-button size="small" @click="onChangeAvatar">{{ t("settings.avatarChange") }}</el-button>
-            <el-button
-              v-if="config.settings.pet_avatar"
-              size="small"
-              text
-              @click="onResetAvatar"
-            >
-              {{ t("settings.avatarReset") }}
-            </el-button>
-          </div>
-        </div>
-        <div class="settings-row">
-          <div class="row-info">
-            <div class="row-title">{{ t("settings.accent") }}</div>
-            <div class="row-desc">{{ t("settings.accentDesc") }}</div>
-          </div>
-          <div class="accent-picker">
-            <el-color-picker v-model="accentModel" size="small" :predefine="presetColors" />
-            <el-button
-              v-if="config.settings.accent_color"
-              size="small"
-              text
-              @click="accentModel = null"
-            >
-              {{ t("settings.accentReset") }}
-            </el-button>
-          </div>
-        </div>
-        <div class="settings-row">
-          <div class="row-info">
-            <div class="row-title">{{ t("settings.spriteSize") }}</div>
-            <div class="row-desc">{{ t("settings.spriteSizeDesc") }}</div>
-          </div>
-          <el-slider
-            v-model="spriteSizeModel"
-            :min="32"
-            :max="64"
-            :step="2"
-            size="small"
-            style="width: 130px; --el-slider-height: 16px"
-          />
-        </div>
-        <div class="settings-row">
-          <div class="row-info">
-            <div class="row-title">{{ t("settings.alwaysOnTop") }}</div>
-            <div class="row-desc">{{ t("settings.alwaysOnTopDesc") }}</div>
-          </div>
-          <el-switch
-            :model-value="config.settings.always_on_top"
-            @change="onAlwaysOnTop"
-          />
-        </div>
-        <div class="settings-row">
-          <div class="row-info">
-            <div class="row-title">{{ t("settings.autostart") }}</div>
-            <div class="row-desc">{{ t("settings.autostartDesc") }}</div>
-          </div>
-          <el-switch v-model="autostart" @change="onAutostart" />
-        </div>
-        <div class="settings-row">
-          <div class="row-info">
-            <div class="row-title">{{ t("settings.shortcut") }}</div>
-            <div class="row-desc">
-              {{ config.platform === "macos" ? "Command + Shift + P" : "Ctrl + Shift + P" }}
+    </div> -->
+    <el-tabs v-model="activeTab" class="settings-tabs">
+      <el-tab-pane :label="t('settings.groupGeneral')" name="general">
+        <el-scrollbar class="view-scroll">
+          <div class="settings-list">
+            <div class="settings-row">
+              <div class="row-info">
+                <div class="row-title">{{ t("settings.appName") }}</div>
+                <div class="row-desc">{{ t("settings.appNameDesc") }}</div>
+              </div>
+              <el-input
+                v-model="appNameModel"
+                size="small"
+                maxlength="24"
+                class="app-name-input"
+                :placeholder="config.settings.app_name ?? 'Desk Pet'"
+                @change="onAppNameChange"
+              />
+            </div>
+            <div class="settings-row">
+              <div class="row-info">
+                <div class="row-title">{{ t("settings.lang") }}</div>
+                <div class="row-desc">{{ t("settings.langDesc") }}</div>
+              </div>
+              <el-select
+                :model-value="config.settings.locale"
+                size="small"
+                style="width: 120px"
+                @change="onLocaleChange"
+              >
+                <el-option label="中文" value="zh-CN" />
+                <el-option label="English" value="en" />
+              </el-select>
+            </div>
+            <div class="settings-row">
+              <div class="row-info">
+                <div class="row-title">{{ t("settings.alwaysOnTop") }}</div>
+                <div class="row-desc">{{ t("settings.alwaysOnTopDesc") }}</div>
+              </div>
+              <el-switch
+                :model-value="config.settings.always_on_top"
+                @change="onAlwaysOnTop"
+              />
+            </div>
+            <div class="settings-row">
+              <div class="row-info">
+                <div class="row-title">{{ t("settings.autostart") }}</div>
+                <div class="row-desc">{{ t("settings.autostartDesc") }}</div>
+              </div>
+              <el-switch v-model="autostart" @change="onAutostart" />
+            </div>
+            <div class="settings-row">
+              <div class="row-info">
+                <div class="row-title">{{ t("settings.shortcut") }}</div>
+                <div class="row-desc">
+                  {{ config.platform === "macos" ? "Command + Shift + P" : "Ctrl + Shift + P" }}
+                </div>
+              </div>
+            </div>
+            <div v-if="config.platform === 'macos'" class="settings-row">
+              <div class="row-info">
+                <div class="row-title">{{ t("settings.dock") }}</div>
+                <div class="row-desc">{{ t("settings.dockDesc") }}</div>
+              </div>
+              <el-switch
+                :model-value="config.settings.show_dock ?? true"
+                @change="(v: string | number | boolean) => config.setShowDock(Boolean(v))"
+              />
             </div>
           </div>
-        </div>
-        <div class="settings-row">
-          <div class="row-info">
-            <div class="row-title">{{ t("settings.tray") }}</div>
-            <div class="row-desc">{{ t("settings.trayDesc") }}</div>
+        </el-scrollbar>
+      </el-tab-pane>
+      <el-tab-pane :label="t('settings.groupAppearance')" name="appearance">
+        <el-scrollbar class="view-scroll">
+          <div class="settings-list">
+            <div class="settings-row">
+              <div class="row-info">
+                <div class="row-title">{{ t("settings.theme") }}</div>
+                <div class="row-desc">{{ t("settings.themeDesc") }}</div>
+              </div>
+              <el-select v-model="themeModel" size="small" style="width: 120px">
+                <el-option :label="t('settings.themeAuto')" value="auto" />
+                <el-option :label="t('settings.themeLight')" value="light" />
+                <el-option :label="t('settings.themeDark')" value="dark" />
+              </el-select>
+            </div>
+            <div class="settings-row">
+              <div class="row-info">
+                <div class="row-title">{{ t("settings.avatar") }}</div>
+                <div class="row-desc">{{ t("settings.avatarDesc") }}</div>
+              </div>
+              <div class="accent-picker">
+                <el-button size="small" @click="onChangeAvatar">{{ t("settings.avatarChange") }}</el-button>
+                <el-button
+                  v-if="config.settings.pet_avatar"
+                  size="small"
+                  text
+                  @click="onResetAvatar"
+                >
+                  {{ t("settings.avatarReset") }}
+                </el-button>
+              </div>
+            </div>
+            <div class="settings-row">
+              <div class="row-info">
+                <div class="row-title">{{ t("settings.accent") }}</div>
+                <div class="row-desc">{{ t("settings.accentDesc") }}</div>
+              </div>
+              <div class="accent-picker">
+                <el-color-picker v-model="accentModel" size="small" :predefine="presetColors" />
+                <el-button
+                  v-if="config.settings.accent_color"
+                  size="small"
+                  text
+                  @click="accentModel = null"
+                >
+                  {{ t("settings.accentReset") }}
+                </el-button>
+              </div>
+            </div>
+            <div class="settings-row">
+              <div class="row-info">
+                <div class="row-title">{{ t("settings.spriteSize") }}</div>
+                <div class="row-desc">{{ t("settings.spriteSizeDesc") }}</div>
+              </div>
+              <el-slider
+                v-model="spriteSizeModel"
+                :min="32"
+                :max="64"
+                :step="2"
+                size="small"
+                style="width: 130px; --el-slider-height: 16px"
+              />
+            </div>
           </div>
-        </div>
-        <div class="settings-row">
-          <div class="row-info">
-            <div class="row-title">{{ t("settings.about") }}</div>
-            <div class="row-desc">Desk Pet v{{ version }} · {{ config.platform || "..." }}</div>
+        </el-scrollbar>
+      </el-tab-pane>
+      <el-tab-pane :label="t('settings.groupAbout')" name="about">
+        <el-scrollbar class="view-scroll">
+          <div class="settings-list">
+            <div class="settings-row">
+              <div class="row-info">
+                <div class="row-title">{{ t("settings.about") }}</div>
+                <div class="row-desc">Desk Pet v{{ version }} · {{ config.platform || "..." }}</div>
+              </div>
+              <el-button size="small" :disabled="updateBtnDisabled" @click="onCheckUpdate">
+                {{ updateBtnText }}
+              </el-button>
+            </div>
           </div>
-          <el-button size="small" :disabled="updateBtnDisabled" @click="onCheckUpdate">
-            {{ updateBtnText }}
-          </el-button>
-        </div>
-      </div>
-    </el-scrollbar>
+        </el-scrollbar>
+      </el-tab-pane>
+    </el-tabs>
   </div>
 </template>
 
@@ -285,6 +306,27 @@ async function onAutostart(val: string | number | boolean) {
   flex-direction: column;
   height: 100%;
   min-height: 0;
+}
+
+/* 分组标签页占满剩余高度，内容区各自滚动 */
+.settings-tabs {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-tabs :deep(.el-tabs__header) {
+  margin: 0 8px 8px;
+}
+
+.settings-tabs :deep(.el-tabs__content) {
+  flex: 1;
+  min-height: 0;
+}
+
+.settings-tabs :deep(.el-tab-pane) {
+  height: 100%;
 }
 
 .settings-list {

@@ -7,13 +7,14 @@ export type PanelView =
   | "pomodoro"
   | "clipboard"
   | "toolbox"
+  | "chat"
   | "quick"
   | "account"
   | "settings";
 
 export const useUiStore = defineStore("ui", () => {
   const expanded = ref(false);
-  const activeView = ref<PanelView>("launcher");
+  const activeView = ref<PanelView>("chat");
 
   function toggleExpanded() {
     expanded.value = !expanded.value;

@@ -3,7 +3,7 @@ import type { Component } from "vue";
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { CopyDocument, Grid, MagicStick, Minus, Notebook, Setting, Suitcase, Timer, User } from "@element-plus/icons-vue";
+import { ChatDotRound, CopyDocument, Grid, MagicStick, Minus, Notebook, Setting, Suitcase, Timer, User } from "@element-plus/icons-vue";
 import { useUiStore, type PanelView } from "@/stores/ui";
 import { useConfigStore } from "@/stores/config";
 import { usePomodoroStore } from "@/stores/pomodoro";
@@ -12,6 +12,7 @@ import Notes from "@/views/Notes.vue";
 import Pomodoro from "@/views/Pomodoro.vue";
 import Clipboard from "@/views/Clipboard.vue";
 import Toolbox from "@/views/Toolbox.vue";
+import Chat from "@/views/Chat.vue";
 import QuickSettings from "@/views/QuickSettings.vue";
 import Account from "@/views/Account.vue";
 import Settings from "@/views/Settings.vue";
@@ -22,6 +23,7 @@ const pomodoro = usePomodoroStore();
 const { t } = useI18n();
 
 const tabs = computed<Array<{ view: PanelView; label: string; icon: Component }>>(() => [
+  { view: "chat", label: t("tabs.chat"), icon: ChatDotRound },
   { view: "launcher", label: t("tabs.launcher"), icon: Grid },
   { view: "notes", label: t("tabs.notes"), icon: Notebook },
   { view: "pomodoro", label: t("tabs.pomodoro"), icon: Timer },
@@ -102,6 +104,7 @@ function tabTip(label: string, view: PanelView): string {
         <Pomodoro v-else-if="ui.activeView === 'pomodoro'" />
         <Clipboard v-else-if="ui.activeView === 'clipboard'" />
         <Toolbox v-else-if="ui.activeView === 'toolbox'" />
+        <Chat v-else-if="ui.activeView === 'chat'" />
         <QuickSettings v-else-if="ui.activeView === 'quick'" />
         <Account v-else-if="ui.activeView === 'account'" />
         <Settings v-else />
