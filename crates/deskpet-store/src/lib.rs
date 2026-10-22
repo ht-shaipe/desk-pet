@@ -6,7 +6,7 @@ pub mod settings;
 mod store;
 
 pub use error::StoreError;
-pub use models::{ClipEntry, LauncherConfig, LauncherItem, Note};
+pub use models::{ChatEntry, ClipEntry, LauncherConfig, LauncherItem, Note};
 pub use settings::AppSettings;
 pub use store::Store;
 

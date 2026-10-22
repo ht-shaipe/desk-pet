@@ -76,7 +76,7 @@
 
   const MOCK_TABS = {
     launcher: {
-      title: "应用启动器",
+      title: "快速启动器",
       accent: "#4ba3ff",
       items: [
         ["VS Code", "应用"],

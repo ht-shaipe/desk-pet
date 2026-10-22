@@ -64,7 +64,7 @@ watch(
 </script>
 
 <template>
-  <div class="app-root" :class="{ expanded: ui.expanded }">
+  <div class="fixed inset-0 overflow-hidden">
     <PanelContainer v-show="ui.expanded" />
     <PetSprite />
   </div>

@@ -32,3 +32,13 @@ pub struct LauncherItem {
 pub struct LauncherConfig {
     pub items: Vec<LauncherItem>,
 }
+
+/// 聊天消息（SQLite 持久化）
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct ChatEntry {
+    pub id: i64,
+    /// user | assistant
+    pub role: String,
+    pub content: String,
+    pub created_at: u64,
+}

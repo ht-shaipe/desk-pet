@@ -14,7 +14,7 @@ const activeComponent = computed(() => activeTool.value?.component);
 </script>
 
 <template>
-  <div class="toolbox-view">
+  <div class="view-root">
     <div class="view-toolbar">
       <el-button
         v-if="activeTool"
@@ -32,19 +32,21 @@ const activeComponent = computed(() => activeTool.value?.component);
 
     <!-- 首页：工具卡片列表 -->
     <el-scrollbar v-if="!activeTool" class="view-scroll">
-      <div class="tool-list">
+      <div class="grid grid-cols-2 gap-2 py-1">
         <button
           v-for="tool in TOOLBOX_TOOLS"
           :key="tool.id"
-          class="tool-card"
+          class="flex items-center gap-2 p-2.5 bg-dp-card-bg border border-dp-card-border rounded-xl cursor-pointer text-left transition-all duration-150 ease-[ease] hover:border-dp-card-hover-border hover:shadow-dp-card-hover active:scale-[0.98]"
           @click="activeId = tool.id"
         >
-          <span class="tool-icon">
+          <span
+            class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-dp-tag-soft text-dp-accent shrink-0"
+          >
             <el-icon :size="18"><component :is="tool.icon" /></el-icon>
           </span>
-          <span class="tool-info">
-            <span class="tool-name">{{ t(tool.titleKey) }}</span>
-            <span class="tool-desc">{{ t(tool.descKey) }}</span>
+          <span class="flex flex-col gap-0.5 min-w-0">
+            <span class="text-xs font-medium text-dp-primary">{{ t(tool.titleKey) }}</span>
+            <span class="text-[10px] text-dp-tertiary truncate">{{ t(tool.descKey) }}</span>
           </span>
         </button>
       </div>
@@ -55,74 +57,3 @@ const activeComponent = computed(() => activeTool.value?.component);
     <component :is="activeComponent" v-else :key="activeId ?? 'tool'" />
   </div>
 </template>
-
-<style scoped>
-.toolbox-view {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
-}
-
-.tool-list {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 8px;
-  padding: 4px 0;
-}
-
-.tool-card {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px;
-  background: var(--dp-card-bg);
-  border: 1px solid var(--dp-card-border);
-  border-radius: 12px;
-  cursor: pointer;
-  text-align: left;
-  transition: all 0.15s ease;
-}
-
-.tool-card:hover {
-  border-color: var(--dp-card-hover-border);
-  box-shadow: var(--dp-card-hover-shadow);
-}
-
-.tool-card:active {
-  transform: scale(0.98);
-}
-
-.tool-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  background: var(--dp-tag-soft);
-  color: var(--dp-accent);
-  flex-shrink: 0;
-}
-
-.tool-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.tool-name {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--dp-text-primary);
-}
-
-.tool-desc {
-  font-size: 10px;
-  color: var(--dp-text-tertiary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-</style>

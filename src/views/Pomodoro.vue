@@ -9,25 +9,30 @@ const modes: PomoMode[] = ["focus", "short", "long"];
 </script>
 
 <template>
-  <div class="pomo-view">
+  <div class="view-root">
     <div class="view-toolbar">
       <span class="toolbar-title">{{ t("pomodoro.title") }}</span>
-      <span class="pomo-count">{{ t("pomodoro.focusCount", { n: store.focusDone }) }}</span>
+      <span class="text-xs text-dp-tertiary">{{ t("pomodoro.focusCount", { n: store.focusDone }) }}</span>
     </div>
-    <div class="pomo-main">
-      <div class="pomo-mode">
+    <div class="flex-1 flex flex-col items-center justify-center gap-[18px]">
+      <div class="flex gap-1.5">
         <button
           v-for="m in modes"
           :key="m"
-          class="mode-btn"
-          :class="{ active: store.mode === m }"
+          class="border bg-dp-card-bg text-dp-muted text-xs py-[5px] px-3.5 rounded-full cursor-pointer transition-all duration-150 ease-[ease]"
+          :class="store.mode === m ? 'bg-dp-accent border-dp-accent text-white' : 'border-dp-card-border'"
           @click="store.setMode(m)"
         >
           {{ t(`pomodoro.mode.${m}`) }}
         </button>
       </div>
-      <div class="pomo-time" :class="{ running: store.running }">{{ store.display }}</div>
-      <div class="pomo-controls">
+      <div
+        class="text-[56px] font-bold tabular-nums tracking-[2px] leading-none"
+        :class="store.running ? 'text-[#e67e22]' : 'text-dp-primary'"
+      >
+        {{ store.display }}
+      </div>
+      <div class="flex gap-2.5">
         <el-button
           v-if="!store.running"
           type="primary"
@@ -48,66 +53,3 @@ const modes: PomoMode[] = ["focus", "short", "long"];
     </div>
   </div>
 </template>
-
-<style scoped>
-.pomo-view {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
-}
-
-.pomo-count {
-  font-size: 12px;
-  color: var(--dp-text-tertiary);
-}
-
-.pomo-main {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 18px;
-}
-
-.pomo-mode {
-  display: flex;
-  gap: 6px;
-}
-
-.mode-btn {
-  border: 1px solid var(--dp-card-border);
-  background: var(--dp-card-bg);
-  color: var(--dp-text-muted);
-  font-size: 12px;
-  padding: 5px 14px;
-  border-radius: 999px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.mode-btn.active {
-  background: var(--dp-accent);
-  border-color: var(--dp-accent);
-  color: #ffffff;
-}
-
-.pomo-time {
-  font-size: 56px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  color: var(--dp-text-primary);
-  letter-spacing: 2px;
-  line-height: 1;
-}
-
-.pomo-time.running {
-  color: #e67e22;
-}
-
-.pomo-controls {
-  display: flex;
-  gap: 10px;
-}
-</style>

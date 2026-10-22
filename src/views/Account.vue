@@ -379,10 +379,14 @@ onMounted(async () => {
             </div>
           </transition>
 
-          <button class="submit-btn" :disabled="loading" @click="submit">
-            <el-icon v-if="loading" class="is-loading"><Loading /></el-icon>
+          <el-button
+            type="primary"
+            class="submit-btn"
+            :loading="loading"
+            @click="submit"
+          >
             {{ mode === "login" ? t("account.login") : t("account.register") }}
-          </button>
+          </el-button>
         </div>
       </div>
     </div>
@@ -687,34 +691,44 @@ onMounted(async () => {
 
 .submit-btn {
   width: 100%;
-  border: none;
+  height: 42px;
+  padding: 0;
+  border-color: transparent;
   border-radius: 10px;
-  padding: 11px 0;
   font-size: 14px;
   font-weight: 600;
   letter-spacing: 2px;
   color: #ffffff;
   background: linear-gradient(160deg, var(--dp-accent), var(--dp-accent-deep, #2f7de1));
   box-shadow: 0 4px 12px rgba(47, 125, 225, 0.35);
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
   transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
 }
 
-.submit-btn:hover:not(:disabled) {
-  transform: translateY(-1px);
+.submit-btn:hover,
+.submit-btn:focus-visible {
+  color: #ffffff;
+  background: linear-gradient(160deg, var(--dp-accent), var(--dp-accent-deep, #2f7de1));
   box-shadow: 0 6px 16px rgba(47, 125, 225, 0.45);
+  transform: translateY(-1px);
 }
 
-.submit-btn:active:not(:disabled) {
+.submit-btn:active {
   transform: translateY(0);
 }
 
+/* loading 时移除 Element 默认的白色遮罩，保持渐变底色 */
+.submit-btn.is-loading::before {
+  display: none;
+}
+
+.submit-btn.is-disabled,
+.submit-btn.is-disabled:hover,
 .submit-btn:disabled {
+  color: #ffffff;
+  background: linear-gradient(160deg, var(--dp-accent), var(--dp-accent-deep, #2f7de1));
+  border-color: transparent;
   opacity: 0.7;
-  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
 }
 </style>

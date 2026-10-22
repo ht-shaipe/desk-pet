@@ -14,10 +14,10 @@ const dragHandlers = usePetDrag({
   onClick: () => ui.toggleExpanded(),
 });
 
-const rootClass = computed(() => ({
-  dragging: config.windowMoving,
-  expanded: ui.expanded,
-}));
+const rootClass = computed(() => [
+  config.windowMoving ? "dragging cursor-grabbing" : "",
+  ui.expanded ? "translate-y-2.5 scale-105 origin-top-left" : "",
+]);
 
 const spriteSize = computed(() => {
   const size = config.settings.sprite_size;
@@ -34,94 +34,24 @@ const showCountdown = computed(() => pomo.running && !ui.expanded);
 </script>
 
 <template>
-  <div class="pet-wrap" :class="rootClass" v-bind="dragHandlers">
+  <div
+    class="pet-wrap absolute top-0 left-0 w-[68px] h-[68px] flex items-center justify-center cursor-grab z-20 touch-none transition-transform duration-200 ease-[ease]"
+    :class="rootClass"
+    v-bind="dragHandlers"
+  >
     <img
-      class="pet-img"
+      class="w-12 h-12 shrink-0 object-cover rounded-full shadow-[0_2px_6px_rgba(31,41,55,0.06)] transition-[transform,box-shadow] duration-250 ease-[ease] animate-pet-breathe select-none pointer-events-none [-webkit-user-drag:none] [.pet-wrap:hover_&]:shadow-[0_4px_10px_rgba(31,41,55,0.08)] [.pet-wrap.dragging_&]:animate-none [.pet-wrap.dragging_&]:scale-[0.94]"
       :style="{ width: `${spriteSize}px`, height: `${spriteSize}px` }"
       :src="avatarSrc"
       alt="pet"
       draggable="false"
     />
-    <div v-if="showCountdown" class="pomo-badge">{{ pomo.display }}</div>
+    <div
+      v-if="showCountdown"
+      class="absolute bottom-1 left-1/2 -translate-x-1/2 py-px px-1.5 bg-[rgba(31,41,55,0.8)] text-white text-[10px] font-semibold font-mono leading-[1.5] tracking-[0.5px] rounded-full shadow-[0_1px_4px_rgba(0,0,0,0.28)] pointer-events-none z-[21] select-none"
+    >
+      {{ pomo.display }}
+    </div>
   </div>
 </template>
 
-<style scoped>
-.pet-wrap {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 68px;
-  height: 68px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: grab;
-  z-index: 20;
-  touch-action: none;
-  transition: transform 0.2s ease;
-}
-
-.pet-wrap.expanded {
-  transform: translateY(10px) scale(1.05);
-  transform-origin: top left;
-}
-
-.pet-wrap.dragging {
-  cursor: grabbing;
-}
-
-.pet-img {
-  width: 48px;
-  height: 48px;
-  flex-shrink: 0;
-  object-fit: cover;
-  border-radius: 50%;
-  box-shadow: 0 2px 6px rgba(31, 41, 55, 0.12);
-  transition: transform 0.25s ease, box-shadow 0.25s ease;
-  animation: pet-breathe 3.2s ease-in-out infinite;
-  user-select: none;
-  -webkit-user-drag: none;
-  pointer-events: none;
-}
-
-.pet-wrap:hover .pet-img {
-  box-shadow: 0 4px 10px rgba(31, 41, 55, 0.16);
-}
-
-.pet-wrap.dragging .pet-img {
-  animation: none;
-  transform: scale(0.94);
-}
-
-@keyframes pet-breathe {
-  0%,
-  100% {
-    transform: translateY(0) scale(1);
-  }
-  50% {
-    transform: translateY(-3px) scale(1.03);
-  }
-}
-
-.pomo-badge {
-  position: absolute;
-  bottom: 4px;
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 1px 6px;
-  background: rgba(31, 41, 55, 0.8);
-  color: #ffffff;
-  font-size: 10px;
-  font-weight: 600;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  line-height: 1.5;
-  letter-spacing: 0.5px;
-  border-radius: 999px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.28);
-  pointer-events: none;
-  z-index: 21;
-  user-select: none;
-}
-
-</style>

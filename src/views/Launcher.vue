@@ -35,6 +35,16 @@ const typeOptions = computed<Array<{ label: string; value: LaunchType }>>(() => 
   { label: t("launcher.typeCmd"), value: "command" },
 ]);
 
+/** 按类型分组；管理态保留空分类，方便直接往该分类里添加。 */
+const groups = computed(() =>
+  typeOptions.value
+    .map((opt) => ({
+      ...opt,
+      items: store.items.filter((item) => item.item_type === opt.value),
+    }))
+    .filter((group) => group.items.length > 0 || editMode.value),
+);
+
 const valuePlaceholder = computed(() => {
   const mac = config.platform !== "windows";
   switch (form.item_type) {
@@ -81,10 +91,12 @@ watch(() => store.items.map((i) => `${i.id}:${i.item_type}:${i.value}`).join("|"
   immediate: true,
 });
 
-function openAdd() {
+function openAdd(type: LaunchType = "app") {
   editingId.value = null;
-  Object.assign(form, emptyForm());
-  void ensureApps();
+  Object.assign(form, emptyForm(), { item_type: type });
+  if (type === "app") {
+    void ensureApps();
+  }
   dialogVisible.value = true;
 }
 
@@ -148,7 +160,7 @@ function confirmDialog() {
 </script>
 
 <template>
-  <div class="launch-view">
+  <div class="view-root">
     <div class="view-toolbar">
       <span class="toolbar-title">{{ t("launcher.title") }}</span>
       <el-button v-if="!editMode" size="small" text :icon="Setting" @click="editMode = true">
@@ -159,38 +171,54 @@ function confirmDialog() {
       </el-button>
     </div>
     <el-scrollbar class="view-scroll">
-      <div v-if="store.items.length > 0 || editMode" class="launch-grid">
-        <div
-          v-for="item in store.items"
-          :key="item.id"
-          class="launch-item"
-          @click="editMode ? openEdit(item) : onLaunch(item)"
-        >
-          <span v-if="editMode" class="item-delete" @click.stop="store.removeItem(item.id)">
-            <el-icon :size="8"><Delete /></el-icon>
-          </span>
-          <span
-            class="item-avatar"
-            :style="iconUrls[item.id] ? {} : { background: item.color || '#909399' }"
-          >
-            <img v-if="iconUrls[item.id]" class="item-icon-img" :src="iconUrls[item.id]" alt="" />
-            <template v-else>{{ item.icon || item.name.slice(0, 1) }}</template>
-          </span>
-          <span class="item-name" :title="item.name">{{ item.name }}</span>
-        </div>
-        <div v-if="editMode" class="launch-item add" @click="openAdd">
-          <span class="item-avatar add-avatar">
-            <el-icon :size="18"><Plus /></el-icon>
-          </span>
-          <span class="item-name">{{ t("launcher.add") }}</span>
-        </div>
+      <div v-if="store.items.length > 0 || editMode" class="flex flex-col gap-3.5 pt-2 px-0.5 pb-1">
+        <section v-for="group in groups" :key="group.value">
+          <div class="flex items-center gap-1.5 px-0.5 pb-0.5">
+            <span class="text-xs font-semibold tracking-[0.02em] text-dp-secondary">{{ group.label }}</span>
+            <span class="min-w-4 h-4 px-[5px] rounded-lg bg-dp-btn-bg text-dp-tertiary text-[10px] leading-4 text-center">{{ group.items.length }}</span>
+          </div>
+          <div class="grid grid-cols-4 gap-2.5">
+            <div
+              v-for="item in group.items"
+              :key="item.id"
+              class="relative flex flex-col items-center gap-1.5 min-w-0 py-2 px-0.5 rounded-[10px] cursor-pointer transition-[background] duration-150 ease-[ease] hover:bg-dp-hover-bg"
+              @click="editMode ? openEdit(item) : onLaunch(item)"
+            >
+              <span
+                v-if="editMode"
+                class="absolute top-0.5 right-1.5 inline-flex items-center justify-center w-4 h-4 rounded-full bg-[#f56c6c] text-white cursor-pointer"
+                @click.stop="store.removeItem(item.id)"
+              >
+                <el-icon :size="8"><Delete /></el-icon>
+              </span>
+              <span
+                class="inline-flex items-center justify-center w-[42px] h-[42px] rounded-full text-white text-[17px] font-semibold overflow-hidden"
+                :style="iconUrls[item.id] ? {} : { background: item.color || '#909399' }"
+              >
+                <img v-if="iconUrls[item.id]" class="w-full h-full object-contain" :src="iconUrls[item.id]" alt="" />
+                <template v-else>{{ item.icon || item.name.slice(0, 1) }}</template>
+              </span>
+              <span class="max-w-full text-xs text-dp-secondary truncate" :title="item.name">{{ item.name }}</span>
+            </div>
+            <div
+              v-if="editMode"
+              class="relative flex flex-col items-center gap-1.5 min-w-0 py-2 px-0.5 rounded-[10px] cursor-pointer transition-[background] duration-150 ease-[ease] hover:bg-dp-hover-bg"
+              @click="openAdd(group.value)"
+            >
+              <span class="inline-flex items-center justify-center w-[42px] h-[42px] rounded-full overflow-hidden bg-dp-btn-hover-bg text-dp-muted">
+                <el-icon :size="18"><Plus /></el-icon>
+              </span>
+              <span class="max-w-full text-xs text-dp-secondary truncate">{{ t("launcher.add") }}</span>
+            </div>
+          </div>
+        </section>
       </div>
       <el-empty
         v-if="store.items.length === 0 && !editMode"
         :description="t('launcher.empty')"
         :image-size="60"
       />
-      <div v-if="editMode" class="edit-hint">
+      <div v-if="editMode" class="flex items-center gap-1 mt-2.5 text-dp-tertiary text-xs">
         <el-icon :size="12"><EditPen /></el-icon>
         {{ t("launcher.editHint") }}
       </div>
@@ -239,93 +267,3 @@ function confirmDialog() {
     </el-dialog>
   </div>
 </template>
-
-<style scoped>
-.launch-view {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
-}
-
-.launch-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 10px;
-  padding: 8px 2px 2px;
-}
-
-.launch-item {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 2px;
-  border-radius: 10px;
-  cursor: pointer;
-  transition: background 0.15s ease;
-}
-
-.launch-item:hover {
-  background: var(--dp-hover-bg);
-}
-
-.item-avatar {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 42px;
-  height: 42px;
-  border-radius: 50%;
-  color: #ffffff;
-  font-size: 17px;
-  font-weight: 600;
-  overflow: hidden;
-}
-
-.add-avatar {
-  background: var(--dp-btn-hover-bg);
-  color: var(--dp-text-muted);
-}
-
-/* 系统应用真实图标 */
-.item-icon-img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-
-.item-name {
-  max-width: 100%;
-  font-size: 12px;
-  color: var(--dp-text-secondary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.item-delete {
-  position: absolute;
-  top: 2px;
-  right: 6px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: #f56c6c;
-  color: #ffffff;
-  cursor: pointer;
-}
-
-.edit-hint {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-top: 10px;
-  color: var(--dp-text-tertiary);
-  font-size: 12px;
-}
-</style>

@@ -54,7 +54,7 @@ async function onClear() {
 </script>
 
 <template>
-  <div class="clip-view">
+  <div class="clip-view view-root [&_.view-toolbar]:gap-1.5">
     <div class="view-toolbar">
       <el-input v-model="keyword" size="small" clearable :placeholder="t('clipboard.searchPh')" :prefix-icon="Search" />
       <el-popconfirm
@@ -73,22 +73,28 @@ async function onClear() {
       <div
         v-for="entry in filtered"
         :key="entry.id"
-        class="clip-item"
-        :class="{ 'is-link': isUrl(entry.text) }"
+        class="clip-item relative bg-dp-card-bg border border-dp-card-border rounded-[10px] pt-2 pr-2.5 pb-1.5 pl-3 mb-1.5 cursor-pointer overflow-hidden transition-[border-color,box-shadow] duration-150 ease-[ease] hover:border-dp-card-hover-border hover:shadow-dp-card-hover before:content-[''] before:absolute before:left-0 before:top-0 before:bottom-0 before:w-[3px] before:bg-dp-accent before:opacity-0 before:transition-opacity before:duration-150 before:ease-[ease] hover:before:opacity-100"
         :title="t('clipboard.copyTip')"
         @click="onCopy(entry.text)"
       >
-        <div class="clip-text">
-          <el-icon v-if="isUrl(entry.text)" class="link-icon"><Link /></el-icon>
-          <span class="text-body">{{ entry.text }}</span>
+        <div class="flex items-start gap-[5px] text-xs text-dp-secondary leading-[1.5]">
+          <el-icon v-if="isUrl(entry.text)" class="shrink-0 mt-0.5 text-dp-accent"><Link /></el-icon>
+          <span
+            class="whitespace-pre-wrap break-all line-clamp-2"
+            :class="isUrl(entry.text) ? 'text-dp-accent' : ''"
+          >{{ entry.text }}</span>
         </div>
-        <div class="clip-meta">
-          <span class="meta-time">
-            <span v-if="isUrl(entry.text)" class="meta-tag">URL</span>
-            <span v-else-if="entry.text.length > 80" class="meta-tag">TEXT</span>
+        <div class="flex items-center justify-between mt-[5px] text-[11px] text-dp-tertiary">
+          <span class="inline-flex items-center gap-[5px] min-w-0">
+            <span v-if="isUrl(entry.text)" class="shrink-0 text-[10px] leading-none py-0.5 px-[5px] rounded-[4px] text-dp-accent bg-dp-tag-soft">URL</span>
+            <span v-else-if="entry.text.length > 80" class="shrink-0 text-[10px] leading-none py-0.5 px-[5px] rounded-[4px] text-dp-accent bg-dp-tag-soft">TEXT</span>
             {{ timeText(entry.updated_at) }}
           </span>
-          <span class="clip-delete" :title="t('common.delete')" @click.stop="store.remove(entry.id)">
+          <span
+            class="inline-flex items-center p-[3px] rounded-[5px] opacity-0 transition-opacity duration-150 ease-[ease] [.clip-item:hover_&]:opacity-100 hover:text-[#f56c6c] hover:bg-dp-danger-soft"
+            :title="t('common.delete')"
+            @click.stop="store.remove(entry.id)"
+          >
             <el-icon :size="12"><Delete /></el-icon>
           </span>
         </div>
@@ -96,122 +102,3 @@ async function onClear() {
     </el-scrollbar>
   </div>
 </template>
-
-<style scoped>
-.clip-view {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
-}
-
-.clip-view .view-toolbar {
-  gap: 6px;
-}
-
-.clip-item {
-  position: relative;
-  background: var(--dp-card-bg);
-  border: 1px solid var(--dp-card-border);
-  border-radius: 10px;
-  padding: 8px 10px 6px 12px;
-  margin-bottom: 6px;
-  cursor: pointer;
-  overflow: hidden;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
-}
-
-.clip-item::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  background: var(--dp-accent);
-  opacity: 0;
-  transition: opacity 0.15s ease;
-}
-
-.clip-item:hover {
-  border-color: var(--dp-card-hover-border);
-  box-shadow: var(--dp-card-hover-shadow);
-}
-
-.clip-item:hover::before {
-  opacity: 1;
-}
-
-.clip-text {
-  display: flex;
-  align-items: flex-start;
-  gap: 5px;
-  font-size: 12px;
-  color: var(--dp-text-secondary);
-  line-height: 1.5;
-}
-
-.clip-item.is-link .text-body {
-  color: var(--dp-accent);
-  word-break: break-all;
-}
-
-.text-body {
-  white-space: pre-wrap;
-  word-break: break-all;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.link-icon {
-  flex-shrink: 0;
-  margin-top: 2px;
-  color: var(--dp-accent);
-}
-
-.clip-meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 5px;
-  font-size: 11px;
-  color: var(--dp-text-tertiary);
-}
-
-.meta-time {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  min-width: 0;
-}
-
-.meta-tag {
-  flex-shrink: 0;
-  font-size: 10px;
-  line-height: 1;
-  padding: 2px 5px;
-  border-radius: 4px;
-  color: var(--dp-accent);
-  background: var(--dp-tag-soft);
-}
-
-.clip-delete {
-  display: inline-flex;
-  align-items: center;
-  padding: 3px;
-  border-radius: 5px;
-  opacity: 0;
-  transition: opacity 0.15s ease;
-}
-
-.clip-item:hover .clip-delete {
-  opacity: 1;
-}
-
-.clip-delete:hover {
-  color: #f56c6c;
-  background: var(--dp-danger-soft);
-}
-</style>

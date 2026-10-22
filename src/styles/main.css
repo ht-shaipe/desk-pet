@@ -1,5 +1,7 @@
 * {
   box-sizing: border-box;
+  /* Tailwind 式 border reset：配合 UnoCSS，border 类只设宽度/颜色即可生效 */
+  border: 0 solid;
 }
 
 /* ---------- 主题变量（html.dark 由主题切换驱动） ---------- */
@@ -140,42 +142,3 @@ body {
   -webkit-user-select: none;
 }
 
-.app-root {
-  position: fixed;
-  inset: 0;
-  overflow: hidden;
-}
-
-/* ---------- 通用视图骨架（面板内各视图共用） ---------- */
-
-.view-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 36px;
-  flex-shrink: 0;
-  padding: 0 0 0 12px ;
-}
-
-.toolbar-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--dp-text-secondary);
-  margin-right: auto;
-}
-
-.view-scroll {
-  flex: 1;
-  min-height: 0;
-}
-/* ---------- 滚动条（浅色轨道 + 主题色滑块，亮暗两套） ---------- */
-
-.view-scroll .el-scrollbar__thumb {
-  background: color-mix(in srgb, var(--dp-text-tertiary) 55%, transparent);
-  opacity: 0.6;
-}
-
-.view-scroll .el-scrollbar__thumb:hover {
-  background: var(--dp-accent);
-  opacity: 0.75;
-}

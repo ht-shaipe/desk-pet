@@ -93,6 +93,38 @@ jobs:
           fi
           echo "Release $TAG ready"
 
+      - name: Validate signing secrets
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          node -e "
+            const key = process.env.TAURI_SIGNING_PRIVATE_KEY || '';
+            const fail = (msg) => { console.error('::error::' + msg); process.exit(1); };
+            if (!key.trim()) {
+              fail('secrets.TAURI_SIGNING_PRIVATE_KEY 为空。请用私钥文件的原始内容（本身即单行 base64，无需任何转换）重新保存：gh secret set TAURI_SIGNING_PRIVATE_KEY < ~/.tauri/desk-pet.key');
+            }
+            if (/\s/.test(key)) {
+              fail('secrets.TAURI_SIGNING_PRIVATE_KEY 含空白字符（空格/换行），Tauri 使用的严格 base64 解码会失败。请保存纯单行 base64 内容。');
+            }
+            if (!/^[A-Za-z0-9+/]+={0,2}$/.test(key)) {
+              fail('secrets.TAURI_SIGNING_PRIVATE_KEY 不是合法的 base64 字符串。Secret 应为 tauri signer generate 生成的 .key 文件内容（单行 base64），不要手动解码或重新编码。');
+            }
+            const decoded = Buffer.from(key, 'base64').toString('utf8');
+            if (!decoded.startsWith('untrusted comment:')) {
+              fail('私钥解码后不以 untrusted comment: 开头，内容不正确。Secret 应为 tauri signer generate 生成的 .key 文件原始内容。');
+            }
+            const lines = decoded.trim().split('\n');
+            if (lines.length < 2 || !lines[1].trim()) {
+              fail('私钥解码后缺少第二行密钥数据（应为两行 minisign 格式）。');
+            }
+            const bin = Buffer.from(lines[1].trim(), 'base64');
+            if (bin.length > 4 && bin.slice(2, 4).toString('latin1') === 'Sc') {
+              console.log('::notice::私钥为密码加密（scrypt）。若密码非空需配置 secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD；本密钥为空密码则无需配置。');
+            }
+            console.log('签名私钥 Secret 格式校验通过');
+          "
+
       - name: Build Tauri app
         shell: bash
         env:

@@ -1,6 +1,6 @@
 import type { Component } from "vue";
 import { defineAsyncComponent } from "vue";
-import { Crop, Lock, Postcard, ScaleToOriginal } from "@element-plus/icons-vue";
+import { Crop, Delete, Lock, Postcard, ScaleToOriginal } from "@element-plus/icons-vue";
 
 /** 工具箱内一个工具的注册信息。 */
 export interface ToolboxTool {
@@ -50,5 +50,12 @@ export const TOOLBOX_TOOLS: ToolboxTool[] = [
     descKey: "toolbox.tools.imgcompress.desc",
     icon: Crop,
     component: defineAsyncComponent(() => import("./tools/ImageCompressTool.vue")),
+  },
+  {
+    id: "cleanup",
+    titleKey: "toolbox.tools.cleanup.title",
+    descKey: "toolbox.tools.cleanup.desc",
+    icon: Delete,
+    component: defineAsyncComponent(() => import("./tools/CleanupTool.vue")),
   },
 ];

@@ -51,66 +51,22 @@ async function onAction(item: QuickItem) {
 </script>
 
 <template>
-  <div class="quick-view">
+  <div class="view-root">
     <div class="view-toolbar">
       <span class="toolbar-title">{{ t("quick.title") }}</span>
     </div>
-    <div class="quick-grid">
-      <button v-for="item in visible" :key="item.action" class="quick-item" @click="onAction(item)">
-        <span class="quick-icon">
+    <div class="flex-1 grid grid-cols-2 gap-2.5 pt-2 px-0.5 pb-0.5 content-start">
+      <button
+        v-for="item in visible"
+        :key="item.action"
+        class="flex flex-col items-center gap-2 py-4 px-1.5 bg-dp-card-bg border border-dp-card-border rounded-xl cursor-pointer transition-all duration-150 ease-[ease] hover:border-dp-card-hover-border hover:shadow-dp-card-hover active:scale-[0.97]"
+        @click="onAction(item)"
+      >
+        <span class="text-dp-accent">
           <el-icon :size="20"><component :is="item.icon" /></el-icon>
         </span>
-        <span class="quick-label">{{ item.label }}</span>
+        <span class="text-xs text-dp-secondary">{{ item.label }}</span>
       </button>
     </div>
   </div>
 </template>
-
-<style scoped>
-.quick-view {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
-}
-
-.quick-grid {
-  flex: 1;
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
-  padding: 8px 2px 2px;
-  align-content: start;
-}
-
-.quick-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 16px 6px;
-  background: var(--dp-card-bg);
-  border: 1px solid var(--dp-card-border);
-  border-radius: 12px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.quick-item:hover {
-  border-color: var(--dp-card-hover-border);
-  box-shadow: var(--dp-card-hover-shadow);
-}
-
-.quick-item:active {
-  transform: scale(0.97);
-}
-
-.quick-icon {
-  color: var(--dp-accent);
-}
-
-.quick-label {
-  font-size: 12px;
-  color: var(--dp-text-secondary);
-}
-</style>

@@ -141,32 +141,35 @@ async function onAutostart(val: string | number | boolean) {
 </script>
 
 <template>
-  <div class="settings-view">
+  <div class="view-root">
     <!-- <div class="view-toolbar">
       <span class="toolbar-title">{{ t("settings.title") }}</span>
     </div> -->
-    <el-tabs v-model="activeTab" class="settings-tabs">
+    <el-tabs
+      v-model="activeTab"
+      class="flex-1 min-h-0 flex flex-col [&_.el-tabs\_\_header]:mx-2 [&_.el-tabs\_\_header]:mb-2 [&_.el-tabs\_\_content]:flex-1 [&_.el-tabs\_\_content]:min-h-0 [&_.el-tab-pane]:h-full"
+    >
       <el-tab-pane :label="t('settings.groupGeneral')" name="general">
         <el-scrollbar class="view-scroll">
-          <div class="settings-list">
-            <div class="settings-row">
-              <div class="row-info">
-                <div class="row-title">{{ t("settings.appName") }}</div>
-                <div class="row-desc">{{ t("settings.appNameDesc") }}</div>
+          <div class="py-1.5 px-0.5">
+            <div class="flex items-center gap-3 py-3 px-2.5 rounded-[10px] transition-[background] duration-150 ease-[ease] hover:bg-dp-hover-bg">
+              <div class="mr-auto">
+                <div class="text-[13px] font-medium text-dp-primary">{{ t("settings.appName") }}</div>
+                <div class="text-xs text-dp-tertiary mt-0.5">{{ t("settings.appNameDesc") }}</div>
               </div>
               <el-input
                 v-model="appNameModel"
                 size="small"
                 maxlength="24"
-                class="app-name-input"
+                class="w-[150px]"
                 :placeholder="config.settings.app_name ?? 'Desk Pet'"
                 @change="onAppNameChange"
               />
             </div>
-            <div class="settings-row">
-              <div class="row-info">
-                <div class="row-title">{{ t("settings.lang") }}</div>
-                <div class="row-desc">{{ t("settings.langDesc") }}</div>
+            <div class="flex items-center gap-3 py-3 px-2.5 rounded-[10px] transition-[background] duration-150 ease-[ease] hover:bg-dp-hover-bg">
+              <div class="mr-auto">
+                <div class="text-[13px] font-medium text-dp-primary">{{ t("settings.lang") }}</div>
+                <div class="text-xs text-dp-tertiary mt-0.5">{{ t("settings.langDesc") }}</div>
               </div>
               <el-select
                 :model-value="config.settings.locale"
@@ -178,35 +181,38 @@ async function onAutostart(val: string | number | boolean) {
                 <el-option label="English" value="en" />
               </el-select>
             </div>
-            <div class="settings-row">
-              <div class="row-info">
-                <div class="row-title">{{ t("settings.alwaysOnTop") }}</div>
-                <div class="row-desc">{{ t("settings.alwaysOnTopDesc") }}</div>
+            <div class="flex items-center gap-3 py-3 px-2.5 rounded-[10px] transition-[background] duration-150 ease-[ease] hover:bg-dp-hover-bg">
+              <div class="mr-auto">
+                <div class="text-[13px] font-medium text-dp-primary">{{ t("settings.alwaysOnTop") }}</div>
+                <div class="text-xs text-dp-tertiary mt-0.5">{{ t("settings.alwaysOnTopDesc") }}</div>
               </div>
               <el-switch
                 :model-value="config.settings.always_on_top"
                 @change="onAlwaysOnTop"
               />
             </div>
-            <div class="settings-row">
-              <div class="row-info">
-                <div class="row-title">{{ t("settings.autostart") }}</div>
-                <div class="row-desc">{{ t("settings.autostartDesc") }}</div>
+            <div class="flex items-center gap-3 py-3 px-2.5 rounded-[10px] transition-[background] duration-150 ease-[ease] hover:bg-dp-hover-bg">
+              <div class="mr-auto">
+                <div class="text-[13px] font-medium text-dp-primary">{{ t("settings.autostart") }}</div>
+                <div class="text-xs text-dp-tertiary mt-0.5">{{ t("settings.autostartDesc") }}</div>
               </div>
               <el-switch v-model="autostart" @change="onAutostart" />
             </div>
-            <div class="settings-row">
-              <div class="row-info">
-                <div class="row-title">{{ t("settings.shortcut") }}</div>
-                <div class="row-desc">
+            <div class="flex items-center gap-3 py-3 px-2.5 rounded-[10px] transition-[background] duration-150 ease-[ease] hover:bg-dp-hover-bg">
+              <div class="mr-auto">
+                <div class="text-[13px] font-medium text-dp-primary">{{ t("settings.shortcut") }}</div>
+                <div class="text-xs text-dp-tertiary mt-0.5">
                   {{ config.platform === "macos" ? "Command + Shift + P" : "Ctrl + Shift + P" }}
                 </div>
               </div>
             </div>
-            <div v-if="config.platform === 'macos'" class="settings-row">
-              <div class="row-info">
-                <div class="row-title">{{ t("settings.dock") }}</div>
-                <div class="row-desc">{{ t("settings.dockDesc") }}</div>
+            <div
+              v-if="config.platform === 'macos'"
+              class="flex items-center gap-3 py-3 px-2.5 rounded-[10px] transition-[background] duration-150 ease-[ease] hover:bg-dp-hover-bg"
+            >
+              <div class="mr-auto">
+                <div class="text-[13px] font-medium text-dp-primary">{{ t("settings.dock") }}</div>
+                <div class="text-xs text-dp-tertiary mt-0.5">{{ t("settings.dockDesc") }}</div>
               </div>
               <el-switch
                 :model-value="config.settings.show_dock ?? true"
@@ -218,11 +224,11 @@ async function onAutostart(val: string | number | boolean) {
       </el-tab-pane>
       <el-tab-pane :label="t('settings.groupAppearance')" name="appearance">
         <el-scrollbar class="view-scroll">
-          <div class="settings-list">
-            <div class="settings-row">
-              <div class="row-info">
-                <div class="row-title">{{ t("settings.theme") }}</div>
-                <div class="row-desc">{{ t("settings.themeDesc") }}</div>
+          <div class="py-1.5 px-0.5">
+            <div class="flex items-center gap-3 py-3 px-2.5 rounded-[10px] transition-[background] duration-150 ease-[ease] hover:bg-dp-hover-bg">
+              <div class="mr-auto">
+                <div class="text-[13px] font-medium text-dp-primary">{{ t("settings.theme") }}</div>
+                <div class="text-xs text-dp-tertiary mt-0.5">{{ t("settings.themeDesc") }}</div>
               </div>
               <el-select v-model="themeModel" size="small" style="width: 120px">
                 <el-option :label="t('settings.themeAuto')" value="auto" />
@@ -230,12 +236,12 @@ async function onAutostart(val: string | number | boolean) {
                 <el-option :label="t('settings.themeDark')" value="dark" />
               </el-select>
             </div>
-            <div class="settings-row">
-              <div class="row-info">
-                <div class="row-title">{{ t("settings.avatar") }}</div>
-                <div class="row-desc">{{ t("settings.avatarDesc") }}</div>
+            <div class="flex items-center gap-3 py-3 px-2.5 rounded-[10px] transition-[background] duration-150 ease-[ease] hover:bg-dp-hover-bg">
+              <div class="mr-auto">
+                <div class="text-[13px] font-medium text-dp-primary">{{ t("settings.avatar") }}</div>
+                <div class="text-xs text-dp-tertiary mt-0.5">{{ t("settings.avatarDesc") }}</div>
               </div>
-              <div class="accent-picker">
+              <div class="flex items-center gap-2">
                 <el-button size="small" @click="onChangeAvatar">{{ t("settings.avatarChange") }}</el-button>
                 <el-button
                   v-if="config.settings.pet_avatar"
@@ -247,12 +253,12 @@ async function onAutostart(val: string | number | boolean) {
                 </el-button>
               </div>
             </div>
-            <div class="settings-row">
-              <div class="row-info">
-                <div class="row-title">{{ t("settings.accent") }}</div>
-                <div class="row-desc">{{ t("settings.accentDesc") }}</div>
+            <div class="flex items-center gap-3 py-3 px-2.5 rounded-[10px] transition-[background] duration-150 ease-[ease] hover:bg-dp-hover-bg">
+              <div class="mr-auto">
+                <div class="text-[13px] font-medium text-dp-primary">{{ t("settings.accent") }}</div>
+                <div class="text-xs text-dp-tertiary mt-0.5">{{ t("settings.accentDesc") }}</div>
               </div>
-              <div class="accent-picker">
+              <div class="flex items-center gap-2">
                 <el-color-picker v-model="accentModel" size="small" :predefine="presetColors" />
                 <el-button
                   v-if="config.settings.accent_color"
@@ -264,10 +270,10 @@ async function onAutostart(val: string | number | boolean) {
                 </el-button>
               </div>
             </div>
-            <div class="settings-row">
-              <div class="row-info">
-                <div class="row-title">{{ t("settings.spriteSize") }}</div>
-                <div class="row-desc">{{ t("settings.spriteSizeDesc") }}</div>
+            <div class="flex items-center gap-3 py-3 px-2.5 rounded-[10px] transition-[background] duration-150 ease-[ease] hover:bg-dp-hover-bg">
+              <div class="mr-auto">
+                <div class="text-[13px] font-medium text-dp-primary">{{ t("settings.spriteSize") }}</div>
+                <div class="text-xs text-dp-tertiary mt-0.5">{{ t("settings.spriteSizeDesc") }}</div>
               </div>
               <el-slider
                 v-model="spriteSizeModel"
@@ -283,11 +289,11 @@ async function onAutostart(val: string | number | boolean) {
       </el-tab-pane>
       <el-tab-pane :label="t('settings.groupAbout')" name="about">
         <el-scrollbar class="view-scroll">
-          <div class="settings-list">
-            <div class="settings-row">
-              <div class="row-info">
-                <div class="row-title">{{ t("settings.about") }}</div>
-                <div class="row-desc">Desk Pet v{{ version }} · {{ config.platform || "..." }}</div>
+          <div class="py-1.5 px-0.5">
+            <div class="flex items-center gap-3 py-3 px-2.5 rounded-[10px] transition-[background] duration-150 ease-[ease] hover:bg-dp-hover-bg">
+              <div class="mr-auto">
+                <div class="text-[13px] font-medium text-dp-primary">{{ t("settings.about") }}</div>
+                <div class="text-xs text-dp-tertiary mt-0.5">Desk Pet v{{ version }} · {{ config.platform || "..." }}</div>
               </div>
               <el-button size="small" :disabled="updateBtnDisabled" @click="onCheckUpdate">
                 {{ updateBtnText }}
@@ -299,76 +305,3 @@ async function onAutostart(val: string | number | boolean) {
     </el-tabs>
   </div>
 </template>
-
-<style scoped>
-.settings-view {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
-}
-
-/* 分组标签页占满剩余高度，内容区各自滚动 */
-.settings-tabs {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.settings-tabs :deep(.el-tabs__header) {
-  margin: 0 8px 8px;
-}
-
-.settings-tabs :deep(.el-tabs__content) {
-  flex: 1;
-  min-height: 0;
-}
-
-.settings-tabs :deep(.el-tab-pane) {
-  height: 100%;
-}
-
-.settings-list {
-  padding: 6px 2px;
-}
-
-.settings-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 10px;
-  border-radius: 10px;
-  transition: background 0.15s ease;
-}
-
-.settings-row:hover {
-  background: var(--dp-hover-bg);
-}
-
-.row-info {
-  margin-right: auto;
-}
-
-.accent-picker {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.app-name-input {
-  width: 150px;
-}
-
-.row-title {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--dp-text-primary);
-}
-
-.row-desc {
-  font-size: 12px;
-  color: var(--dp-text-tertiary);
-  margin-top: 2px;
-}
-</style>

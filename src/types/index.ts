@@ -16,6 +16,15 @@ export interface ChatMessage {
   content: string;
 }
 
+/** 聊天消息（SQLite 持久化记录）。 */
+export interface ChatEntry {
+  id: number;
+  /** user | assistant */
+  role: string;
+  content: string;
+  created_at: number;
+}
+
 export interface AppSettings {
   pet_x: number | null;
   pet_y: number | null;
@@ -32,7 +41,6 @@ export interface AppSettings {
   show_dock?: boolean | null;
   ai_models?: AiModel[];
   ai_active?: string | null;
-  ai_messages?: ChatMessage[];
 }
 
 export type LaunchType = "app" | "url" | "command";
@@ -74,3 +82,37 @@ export interface ImagePayload {
   height: number;
   rgba: number[];
 }
+
+/* ---------- 磁盘清理 ---------- */
+
+export type CleanupKind = "logs" | "target" | "node_modules";
+
+export interface CleanupCandidate {
+  id: string;
+  kind: CleanupKind;
+  path: string;
+  bytes: number;
+}
+
+/** 后端创建扫描/删除任务后返回的 SSE 连接信息。 */
+export interface CleanupStream {
+  jobId: string;
+  url: string;
+}
+
+export type CleanupEvent =
+  | { type: "started"; mode: "scan" | "delete"; root: string }
+  | {
+      type: "progress";
+      dirs: number;
+      files: number;
+      bytes: number;
+      errors: number;
+      current: string;
+    }
+  | { type: "found"; items: CleanupCandidate[] }
+  | { type: "scanDone"; count: number; bytes: number; errors: number; truncated: boolean }
+  | { type: "deleting"; id: string; kind: CleanupKind; path: string; bytes: number }
+  | { type: "deleted"; id: string; ok: boolean; bytes: number; error: string | null }
+  | { type: "deleteDone"; removed: number; failed: number; bytes: number }
+  | { type: "cancelled"; mode: "scan" | "delete" };

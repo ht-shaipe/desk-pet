@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { Delete, Edit, Plus, Position, VideoPause } from "@element-plus/icons-vue";
-import { ElMessage } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 import { useConfigStore } from "@/stores/config";
 import { isModelReady, streamChatCompletion } from "@/api/ai";
-import type { AiModel, ChatMessage } from "@/types";
+import { getChatMessages, addChatMessage, deleteChatMessage, clearChatMessages } from "@/api/chat";
+import type { AiModel, ChatEntry, ChatMessage } from "@/types";
 
 const { t } = useI18n();
 const config = useConfigStore();
@@ -15,7 +16,14 @@ const activeId = computed<string | null>(() => config.settings.ai_active ?? null
 const activeModel = computed<AiModel | null>(
   () => models.value.find((m) => m.id === activeId.value) ?? null
 );
-const messages = computed<ChatMessage[]>(() => config.settings.ai_messages ?? []);
+
+/** 已入库的聊天记录（SQLite）。 */
+const messages = ref<ChatEntry[]>([]);
+/** 流式输出中的 assistant 占位（负数 id，未入库）。 */
+const pending = ref<ChatEntry | null>(null);
+const rendered = computed<ChatEntry[]>(() =>
+  pending.value ? [...messages.value, pending.value] : messages.value
+);
 
 const input = ref("");
 const streaming = ref(false);
@@ -33,7 +41,7 @@ function scrollToEnd() {
   });
 }
 
-watch(messages, scrollToEnd, { deep: true });
+watch(rendered, scrollToEnd, { deep: true });
 watch(
   () => models.value.length,
   () => {
@@ -44,8 +52,22 @@ watch(
   { immediate: true }
 );
 
-function persist(list: ChatMessage[]) {
-  void config.setAiMessages(list);
+onMounted(async () => {
+  try {
+    messages.value = await getChatMessages();
+  } catch (err) {
+    console.error("[desk-pet] 聊天记录加载失败:", err);
+  }
+});
+
+/** 把流式完成的回复写入 SQLite；失败时提示（内容已无法恢复）。 */
+async function saveAssistant(content: string): Promise<void> {
+  try {
+    messages.value.push(await addChatMessage("assistant", content));
+  } catch (err) {
+    console.error("[desk-pet] 保存回复失败:", err);
+    ElMessage.error(t("chat.saveFail"));
+  }
 }
 
 async function send() {
@@ -64,38 +86,47 @@ async function send() {
     showModels.value = true;
     return;
   }
-  const history: ChatMessage[] = [...messages.value, { role: "user", content: text }];
+  let userMsg: ChatEntry;
+  try {
+    userMsg = await addChatMessage("user", text);
+  } catch (err) {
+    console.error("[desk-pet] 保存消息失败:", err);
+    ElMessage.error(t("chat.saveFail"));
+    return;
+  }
   input.value = "";
-  persist([...history, { role: "assistant", content: "" }]);
+  messages.value.push(userMsg);
+  const history: ChatMessage[] = messages.value.map((m) => ({ role: m.role, content: m.content }));
+  pending.value = { id: -1, role: "assistant", content: "", created_at: 0 };
   streaming.value = true;
   abortController = new AbortController();
-  const list = [...history, { role: "assistant", content: "" }];
-  const patch = (content: string) => {
-    list[list.length - 1] = { role: "assistant", content };
-    persist(list);
-  };
   try {
     await streamChatCompletion({
       model,
       messages: history,
       signal: abortController.signal,
       onDelta: (delta) => {
-        patch(list[list.length - 1].content + delta);
+        if (pending.value) {
+          pending.value.content += delta;
+        }
       },
     });
+    const content = pending.value?.content ?? "";
+    if (content) {
+      await saveAssistant(content);
+    }
   } catch (err) {
-    const fallback = list[list.length - 1].content;
+    const partial = pending.value?.content ?? "";
     const msg = abortController?.signal.aborted
       ? t("chat.stopped")
       : `${t("chat.requestFail")}: ${err instanceof Error ? err.message : String(err)}`;
-    if (!fallback) {
-      // 无任何输出时移除空的 assistant 占位，改为错误提示
-      persist(list.slice(0, -1));
-      ElMessage.error(msg);
+    if (partial) {
+      await saveAssistant(`${partial}\n\n(${msg})`);
     } else {
-      patch(`${fallback}\n\n(${msg})`);
+      ElMessage.error(msg);
     }
   } finally {
+    pending.value = null;
     streaming.value = false;
     abortController = null;
   }
@@ -113,11 +144,41 @@ function onEnterKey(e: KeyboardEvent) {
   void send();
 }
 
-function clearHistory() {
-  if (messages.value.length === 0) {
+/** 删除单条聊天记录。 */
+async function removeMessage(msg: ChatEntry) {
+  if (msg.id <= 0) {
     return;
   }
-  persist([]);
+  try {
+    await deleteChatMessage(msg.id);
+    messages.value = messages.value.filter((m) => m.id !== msg.id);
+  } catch (err) {
+    console.error("[desk-pet] 删除消息失败:", err);
+    ElMessage.error(t("chat.deleteFail"));
+  }
+}
+
+async function clearHistory() {
+  if (rendered.value.length === 0) {
+    return;
+  }
+  try {
+    await ElMessageBox.confirm(t("chat.clearTitle"), t("chat.title"), {
+      confirmButtonText: t("common.confirm"),
+      cancelButtonText: t("common.cancel"),
+      type: "warning",
+    });
+  } catch {
+    return;
+  }
+  try {
+    await clearChatMessages();
+    messages.value = [];
+    ElMessage.success(t("chat.cleared"));
+  } catch (err) {
+    console.error("[desk-pet] 清空聊天失败:", err);
+    ElMessage.error(t("chat.deleteFail"));
+  }
 }
 
 /** ---------- 模型管理 ---------- */
@@ -182,7 +243,7 @@ async function removeModel(model: AiModel) {
         <el-button size="small" text type="primary" :icon="Plus" @click="openAdd(); showModels = true">
           {{ t("chat.addModel") }}
         </el-button>
-        <el-button size="small" text :icon="Delete" @click="clearHistory" />
+        <el-button size="small" text :icon="Delete" :title="t('chat.clear')" @click="clearHistory" />
       </div>
     </div>
 
@@ -198,22 +259,31 @@ async function removeModel(model: AiModel) {
         </el-button>
       </el-empty>
       <el-empty
-        v-else-if="messages.length === 0"
+        v-else-if="rendered.length === 0"
         :description="t('chat.emptyMessages')"
         :image-size="60"
         class="chat-empty"
       />
       <el-scrollbar v-else ref="listRef" class="view-scroll chat-list">
         <div
-          v-for="(msg, i) in messages"
-          :key="i"
+          v-for="msg in rendered"
+          :key="msg.id"
           class="msg-row"
           :class="msg.role === 'user' ? 'mine' : 'theirs'"
         >
           <div class="msg-bubble" :class="msg.role">
             <span class="msg-text">{{ msg.content }}</span>
-            <span v-if="streaming && i === messages.length - 1 && msg.role === 'assistant'" class="cursor" />
+            <span v-if="pending && msg.id < 0" class="cursor" />
           </div>
+          <el-button
+            v-if="msg.id > 0"
+            class="msg-del"
+            text
+            size="small"
+            :icon="Delete"
+            :title="t('common.delete')"
+            @click="removeMessage(msg)"
+          />
         </div>
       </el-scrollbar>
     </div>
@@ -340,6 +410,27 @@ async function removeModel(model: AiModel) {
 
 .msg-row.theirs {
   justify-content: flex-start;
+}
+
+/* 单条删除按钮：行 hover 时浮现 */
+.msg-del {
+  flex-shrink: 0;
+  align-self: center;
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  padding: 0;
+  margin: 0 2px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.msg-row:hover .msg-del {
+  opacity: 0.55;
+}
+
+.msg-row .msg-del:hover {
+  opacity: 1;
 }
 
 .msg-bubble {

@@ -29,6 +29,10 @@ pub fn run() {
             tauri_cmds::launcher_cmds::list_apps,
             tauri_cmds::notes_cmds::get_notes,
             tauri_cmds::notes_cmds::save_notes,
+            tauri_cmds::chat_cmds::get_chat_messages,
+            tauri_cmds::chat_cmds::add_chat_message,
+            tauri_cmds::chat_cmds::delete_chat_message,
+            tauri_cmds::chat_cmds::clear_chat_messages,
             tauri_cmds::clipboard_cmds::get_clipboard_history,
             tauri_cmds::clipboard_cmds::clear_clipboard_history,
             tauri_cmds::clipboard_cmds::delete_clipboard_entry,
@@ -40,6 +44,9 @@ pub fn run() {
             tauri_cmds::toolbox_cmds::set_clipboard_image,
             tauri_cmds::toolbox_cmds::save_qr_png,
             tauri_cmds::toolbox_cmds::save_image,
+            tauri_cmds::cleanup_cmds::disk_cleanup_scan,
+            tauri_cmds::cleanup_cmds::disk_cleanup_delete,
+            tauri_cmds::cleanup_cmds::disk_cleanup_cancel,
         ])
         .setup(|app| {
             use tauri::{Listener, Manager};
@@ -49,7 +56,16 @@ pub fn run() {
             let store = deskpet_store::Store::open(&dir)?;
             handle.manage(state::AppState::new(store));
 
-            let settings = deskpet_store::settings::load(&dir);
+            let mut settings = deskpet_store::settings::load(&dir);
+            // 旧版聊天历史存于 settings.json，启动时迁入 SQLite 并从设置中清除
+            {
+                let state = handle.state::<state::AppState>();
+                let st = state.store.lock().unwrap();
+                if st.migrate_chat_messages(&settings.ai_messages).unwrap_or(0) > 0 {
+                    settings.ai_messages.clear();
+                    let _ = deskpet_store::settings::save(&dir, &settings);
+                }
+            }
             let locale = settings.locale.clone().unwrap_or_else(|| "zh-CN".to_string());
             let app_name = settings.app_name.clone().unwrap_or_else(|| "Desk Pet".to_string());
 

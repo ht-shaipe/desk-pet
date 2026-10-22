@@ -2,6 +2,7 @@ import { listen } from "@tauri-apps/api/event";
 import { currentMonitor, getCurrentWindow } from "@tauri-apps/api/window";
 import { PhysicalPosition, PhysicalSize } from "@tauri-apps/api/dpi";
 import { i18n } from "@/i18n";
+import "virtual:uno.css";
 
 /** 番茄钟完成提醒浮层：接收主窗口事件，屏幕上方显示大字，点击/按 Esc 关闭。 */
 
@@ -14,6 +15,9 @@ const LOGICAL_W = 460;
 const LOGICAL_H = 190;
 
 const win = getCurrentWindow();
+
+// 禁用提醒浮层的默认右键菜单
+document.addEventListener("contextmenu", (event) => event.preventDefault(), { capture: true });
 
 function setup(
   card: HTMLElement,

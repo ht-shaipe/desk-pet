@@ -4,7 +4,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { emit } from "@tauri-apps/api/event";
 import { getPlatform, setShowDock as invokeSetShowDock } from "@/api/system";
 import { getSettings, saveSettings, setPetAvatar, resetPetAvatar } from "@/api/settings";
-import type { AiModel, AppSettings, ChatMessage, ThemeMode } from "@/types";
+import type { AiModel, AppSettings, ThemeMode } from "@/types";
 import { detectLocale, setAppLocale, type AppLocale } from "@/i18n";
 import { initWindowPosition } from "@/lib/windowCtl";
 import { useUiStore } from "./ui";
@@ -84,28 +84,7 @@ function normalizeAiModels(value: unknown): AiModel[] {
   return models;
 }
 
-/** 归一化聊天历史：只保留 user/assistant 角色的字符串内容。 */
-function normalizeChatMessages(value: unknown): ChatMessage[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  const messages: ChatMessage[] = [];
-  for (const item of value) {
-    if (typeof item !== "object" || item === null) {
-      continue;
-    }
-    const raw = item as Record<string, unknown>;
-    if (typeof raw.role !== "string" || typeof raw.content !== "string") {
-      continue;
-    }
-    if (raw.role !== "user" && raw.role !== "assistant") {
-      continue;
-    }
-    messages.push({ role: raw.role, content: raw.content });
-  }
-  return messages;
-}
-
+/** 把主题色写入 DOM：覆盖 --dp-accent，并按 Element Plus 规则生成 primary 明暗变体。 */
 function hexToRgb(hex: string): [number, number, number] {
   let h = hex.slice(1);
   if (h.length === 3) {
@@ -331,12 +310,6 @@ export const useConfigStore = defineStore("config", () => {
     schedulePersist();
   }
 
-  /** 保存聊天历史（流式输出中高频调用，走防抖持久化）。 */
-  async function setAiMessages(messages: ChatMessage[]) {
-    settings.value.ai_messages = messages;
-    schedulePersist();
-  }
-
   /** 切换是否在 Dock 中显示（仅 macOS）。 */
   async function setShowDock(visible: boolean) {
     settings.value.show_dock = visible;
@@ -364,7 +337,6 @@ export const useConfigStore = defineStore("config", () => {
       show_dock: typeof s.show_dock === "boolean" ? s.show_dock : true,
       ai_models: normalizeAiModels(s.ai_models),
       ai_active: typeof s.ai_active === "string" ? s.ai_active : null,
-      ai_messages: normalizeChatMessages(s.ai_messages),
     };
     setAppLocale(locale);
     applyTheme(theme);
@@ -395,7 +367,6 @@ export const useConfigStore = defineStore("config", () => {
     updateAiModel,
     removeAiModel,
     setActiveAiModel,
-    setAiMessages,
     setShowDock,
   };
 });

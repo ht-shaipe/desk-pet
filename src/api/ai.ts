@@ -63,6 +63,7 @@ export async function streamChatCompletion(options: StreamChatOptions): Promise<
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${model.api_key}`,
+      "User-Agent": "DeskPet",
     },
     body: JSON.stringify({
       model: model.model,

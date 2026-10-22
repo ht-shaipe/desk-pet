@@ -1,3 +1,5 @@
+pub mod chat_cmds;
+pub mod cleanup_cmds;
 pub mod clipboard_cmds;
 pub mod launcher_cmds;
 pub mod notes_cmds;
