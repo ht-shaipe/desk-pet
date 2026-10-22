@@ -74,8 +74,14 @@ npm run tauri build  # 打包发布
    - `TAURI_SIGNING_PRIVATE_KEY`：`~/.tauri/desk-pet.key` 的内容
    - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`：生成密钥时设置的密码（本项目为空，但仍建议添加并留空，
      避免 CI 中 CLI 等待交互输入）
+   - `CALLBACK_URL`（可选）：发布结束后的回调接口地址，未配置则跳过回调
+   - `CALLBACK_TOKEN`（可选）：回调请求的 Bearer Token
 2. 确认 `src-tauri/tauri.conf.json` 中 `plugins.updater.endpoints` 指向正确的 `owner/repo`
 3. 发布：`git tag v0.2.0 && git push origin v0.2.0`（或 Actions 页面手动触发并填版本号）
+4. 回调：所有平台打包（`publish`）与 `latest.json` 合并（`merge-manifest`）结束后，`notify` job
+   向 `CALLBACK_URL` 发送一次 `POST`（成功、失败都会发，workflow 手动取消除外）。请求体包含
+   `event`、`version`、`tag`、`success`、`jobs`、`run_url`、`release_url` 等字段；接口超时或非 2xx
+   只记录 warning，不会把已完成的发布标记为失败。接口侧建议按 `run_id` 做幂等处理。
 
 > 签名公钥已写入 `tauri.conf.json`；私钥务必妥善保管，丢失将无法再发布增量更新。
 

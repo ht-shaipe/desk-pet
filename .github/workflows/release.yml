@@ -299,3 +299,111 @@ jobs:
             [ -n "$ASSET_ID" ] && gh api --method DELETE repos/${REPO}/releases/assets/$ASSET_ID 2>/dev/null || true
           done
           echo "OK Fragment files cleaned up"
+
+  # 所有打包（publish）与更新清单合并（merge-manifest）结束后回调外部接口。
+  # 依赖 secrets.CALLBACK_URL（必填）与 secrets.CALLBACK_TOKEN（可选，Bearer）。
+  # 未配置 CALLBACK_URL 时自动跳过；接口异常只记 warning，不会把已完成的发布标记为失败。
+  notify:
+    needs: [publish, merge-manifest]
+    # 成功、失败都通知；workflow 被手动取消时不通知
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    permissions: {}
+    timeout-minutes: 5
+    env:
+      CALLBACK_URL: ${{ secrets.CALLBACK_URL }}
+      CALLBACK_TOKEN: ${{ secrets.CALLBACK_TOKEN }}
+      PUBLISH_RESULT: ${{ needs.publish.result }}
+      MERGE_RESULT: ${{ needs['merge-manifest'].result }}
+      NEEDS_JSON: ${{ toJSON(needs) }}
+    steps:
+      - name: Determine version
+        id: ver
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          fi
+          VERSION=$(printf '%s' "$VERSION" | sed 's/^v//' | tr -d '[:space:]')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Warn when callback URL is missing
+        if: ${{ env.CALLBACK_URL == '' }}
+        run: echo "::warning::未配置 secrets.CALLBACK_URL，跳过发布回调接口"
+
+      - name: POST release callback
+        if: ${{ env.CALLBACK_URL != '' }}
+        continue-on-error: true
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          TAG="v${VERSION}"
+          SUCCESS=false
+          if [ "$PUBLISH_RESULT" = "success" ] && [ "$MERGE_RESULT" = "success" ]; then
+            SUCCESS=true
+          fi
+
+          BODY=$(jq -n \
+            --arg event "release.completed" \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg version "$VERSION" \
+            --arg tag "$TAG" \
+            --arg ref "$GITHUB_REF" \
+            --arg sha "$GITHUB_SHA" \
+            --arg workflow "$GITHUB_WORKFLOW" \
+            --arg eventName "$GITHUB_EVENT_NAME" \
+            --arg runId "$GITHUB_RUN_ID" \
+            --arg runNumber "$GITHUB_RUN_NUMBER" \
+            --arg runUrl "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            --arg releaseUrl "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$TAG" \
+            --arg occurredAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --argjson success "$SUCCESS" \
+            --argjson jobs "$NEEDS_JSON" \
+            '{
+               event: $event,
+               repository: $repository,
+               version: $version,
+               tag: $tag,
+               ref: $ref,
+               sha: $sha,
+               success: $success,
+               jobs: $jobs,
+               workflow: $workflow,
+               event_name: $eventName,
+               run_id: $runId,
+               run_number: $runNumber,
+               run_url: $runUrl,
+               release_url: $releaseUrl,
+               occurred_at: $occurredAt
+             }')
+
+          echo "POST $CALLBACK_URL"
+          echo "$BODY" | jq .
+
+          HEADERS=(-H "Content-Type: application/json"
+            -H "X-GitHub-Event: release.completed"
+            -H "Idempotency-Key: ${GITHUB_RUN_ID}")
+          if [ -n "${CALLBACK_TOKEN:-}" ]; then
+            HEADERS+=(-H "Authorization: Bearer ${CALLBACK_TOKEN}")
+          fi
+
+          HTTP_CODE=$(curl -sS -o callback-response.txt -w '%{http_code}' \
+            --retry 3 --retry-delay 5 --retry-connrefused \
+            --connect-timeout 5 --max-time 20 \
+            -X POST "$CALLBACK_URL" "${HEADERS[@]}" \
+            --data-binary "$BODY") || {
+            echo "::warning::回调请求失败（网络错误或超时）"
+            exit 1
+          }
+
+          echo "HTTP $HTTP_CODE"
+          cat callback-response.txt || true
+
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            echo "::warning::回调接口返回 HTTP $HTTP_CODE"
+            exit 1
+          fi
