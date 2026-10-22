@@ -61,6 +61,24 @@ npm run tauri dev    # 开发调试
 npm run tauri build  # 打包发布
 ```
 
+## 发布与自动更新
+
+发布由 GitHub Actions（`.github/workflows/release.yml`）驱动：推送 `v*` tag 或手动触发 workflow，
+自动构建 macOS（arm64/x64）与 Windows 安装包，上传到 GitHub Release，并合并生成 `latest.json`
+更新清单。应用内置 `tauri-plugin-updater`，启动时静默检查更新、每 6 小时周期检查，发现新版本
+弹通知可直接下载安装；设置页「关于」也可手动检查。
+
+首次使用前需配置：
+
+1. 在 GitHub 仓库 **Settings → Secrets → Actions** 添加：
+   - `TAURI_SIGNING_PRIVATE_KEY`：`~/.tauri/desk-pet.key` 的内容
+   - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`：生成密钥时设置的密码（本项目为空，但仍建议添加并留空，
+     避免 CI 中 CLI 等待交互输入）
+2. 确认 `src-tauri/tauri.conf.json` 中 `plugins.updater.endpoints` 指向正确的 `owner/repo`
+3. 发布：`git tag v0.2.0 && git push origin v0.2.0`（或 Actions 页面手动触发并填版本号）
+
+> 签名公钥已写入 `tauri.conf.json`；私钥务必妥善保管，丢失将无法再发布增量更新。
+
 ## 技术要点
 
 - 透明窗口依赖 macOS 私有 API（`tauri.conf.json` 的 `macOSPrivateApi` + Cargo 的

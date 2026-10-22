@@ -212,6 +212,9 @@ export default {
   },
   settings: {
     title: "Settings",
+    appName: "App Name",
+    appNameDesc: "Name shown in panel and tray",
+    appNameOk: "App name updated",
     lang: "Language",
     langDesc: "Interface display language",
     theme: "Theme",
@@ -241,5 +244,10 @@ export default {
     tray: "Tray Menu",
     trayDesc: "Show/hide the pet or quit from the menu bar icon",
     about: "About",
+    checkUpdate: "Check Update",
+    updateChecking: "Checking...",
+    updateRestart: "Restart",
+    upToDate: "Already up to date",
+    updateFail: "Update check failed: {err}",
   },
 };

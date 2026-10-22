@@ -3,10 +3,12 @@ import { computed } from "vue";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useUiStore } from "@/stores/ui";
 import { useConfigStore } from "@/stores/config";
+import { usePomodoroStore } from "@/stores/pomodoro";
 import { usePetDrag } from "@/composables/usePetDrag";
 
 const ui = useUiStore();
 const config = useConfigStore();
+const pomo = usePomodoroStore();
 
 const dragHandlers = usePetDrag({
   onClick: () => ui.toggleExpanded(),
@@ -26,6 +28,9 @@ const avatarSrc = computed(() => {
   const p = config.settings.pet_avatar;
   return p ? convertFileSrc(p) : "/images/avatar.png";
 });
+
+/** 收起面板且番茄钟计时中时，在精灵上显示倒计时 */
+const showCountdown = computed(() => pomo.running && !ui.expanded);
 </script>
 
 <template>
@@ -37,6 +42,7 @@ const avatarSrc = computed(() => {
       alt="pet"
       draggable="false"
     />
+    <div v-if="showCountdown" class="pomo-badge">{{ pomo.display }}</div>
   </div>
 </template>
 
@@ -96,6 +102,26 @@ const avatarSrc = computed(() => {
   50% {
     transform: translateY(-3px) scale(1.03);
   }
+}
+
+.pomo-badge {
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 1px 6px;
+  background: rgba(31, 41, 55, 0.8);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 600;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  line-height: 1.5;
+  letter-spacing: 0.5px;
+  border-radius: 999px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.28);
+  pointer-events: none;
+  z-index: 21;
+  user-select: none;
 }
 
 </style>

@@ -43,6 +43,17 @@ function normalizeAccentColor(value: string | null | undefined): string | null {
   return /^#([0-9a-fA-F]{6}|[0-9a-fA-F]{3})$/.test(value.trim()) ? value.trim() : null;
 }
 
+/** 归一化应用名：去空白、限长 24，空串视为 null（用默认名）。 */
+export const DEFAULT_APP_NAME = "Desk Pet";
+
+function normalizeAppName(value: string | null | undefined): string {
+  if (typeof value !== "string") {
+    return DEFAULT_APP_NAME;
+  }
+  const trimmed = value.trim().slice(0, 24);
+  return trimmed.length > 0 ? trimmed : DEFAULT_APP_NAME;
+}
+
 function hexToRgb(hex: string): [number, number, number] {
   let h = hex.slice(1);
   if (h.length === 3) {
@@ -115,6 +126,7 @@ export const useConfigStore = defineStore("config", () => {
     theme: "auto",
     sprite_size: 48,
     accent_color: null,
+    app_name: DEFAULT_APP_NAME,
   });
   const platform = ref("");
   const windowMoving = ref(false);
@@ -202,6 +214,14 @@ export const useConfigStore = defineStore("config", () => {
     schedulePersist();
   }
 
+  /** 设置应用名称：界面显示与托盘提示同步更新。 */
+  async function setAppName(value: string | null | undefined) {
+    const name = normalizeAppName(value);
+    settings.value.app_name = name;
+    schedulePersist();
+    await emit("app://name-changed", name);
+  }
+
   /** 更换精灵头像：拷贝图片到 app data 并记录路径。 */
   async function changePetAvatar(src: string) {
     settings.value.pet_avatar = await setPetAvatar(src);
@@ -231,6 +251,7 @@ export const useConfigStore = defineStore("config", () => {
       auth_token: s.auth_token ?? null,
       auth_user: s.auth_user ?? null,
       pet_avatar: typeof s.pet_avatar === "string" ? s.pet_avatar : null,
+      app_name: normalizeAppName(s.app_name),
     };
     setAppLocale(locale);
     applyTheme(theme);
@@ -252,6 +273,7 @@ export const useConfigStore = defineStore("config", () => {
     setTheme,
     setSpriteSize,
     setAccentColor,
+    setAppName,
     setAuth,
     logout,
     changePetAvatar,

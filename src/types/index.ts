@@ -11,6 +11,7 @@ export interface AppSettings {
   auth_token?: string | null;
   auth_user?: string | null;
   pet_avatar?: string | null;
+  app_name?: string | null;
 }
 
 export type LaunchType = "app" | "url" | "command";

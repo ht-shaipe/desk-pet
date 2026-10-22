@@ -10,6 +10,7 @@ import { useClipboardStore } from "@/stores/clipboard";
 import { useLauncherStore } from "@/stores/launcher";
 import { useNotesStore } from "@/stores/notes";
 import { collapseWindow, expandWindow, rememberPanelSize } from "@/lib/windowCtl";
+import { useUpdater } from "@/composables/useUpdater";
 
 const ui = useUiStore();
 const config = useConfigStore();
@@ -22,6 +23,10 @@ onMounted(() => {
   void useClipboardStore().init();
   void useLauncherStore().init();
   void useNotesStore().init();
+  // 启动静默检查更新 + 周期性检查
+  const updater = useUpdater();
+  void updater.checkOnStartup();
+  updater.startPeriodicCheck();
   void config
     .init()
     .then(() => win.onMoved((event) => config.onWindowMoved(event.payload)))

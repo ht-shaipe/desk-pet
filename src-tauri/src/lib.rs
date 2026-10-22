@@ -15,6 +15,8 @@ pub fn run() {
             None,
         ))
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .invoke_handler(tauri::generate_handler![
             tauri_cmds::settings_cmds::get_settings,
             tauri_cmds::settings_cmds::save_settings,
@@ -46,14 +48,33 @@ pub fn run() {
 
             let settings = deskpet_store::settings::load(&dir);
             let locale = settings.locale.unwrap_or_else(|| "zh-CN".to_string());
-            tray::create_tray(handle, &locale)?;
+            let app_name = settings.app_name.unwrap_or_else(|| "Desk Pet".to_string());
+            tray::create_tray(handle, &locale, &app_name)?;
             tauri_cmds::clipboard_cmds::start_poll(handle.clone());
 
             // 界面语言切换时重建托盘菜单
             let h = handle.clone();
             app.listen("i18n://locale-changed", move |event| {
                 if let Ok(locale) = serde_json::from_str::<String>(event.payload()) {
-                    let _ = tray::rebuild_tray(&h, &locale);
+                    let dir = paths::data_dir(&h).unwrap_or_default();
+                    let name = deskpet_store::settings::load(&dir)
+                        .app_name
+                        .unwrap_or_else(|| "Desk Pet".to_string());
+                    let _ = tray::rebuild_tray(&h, &locale, &name);
+                }
+            });
+
+            // 应用名称变更时更新托盘提示
+            let h = handle.clone();
+            app.listen("app://name-changed", move |event| {
+                if let Ok(name) = serde_json::from_str::<String>(event.payload()) {
+                    let locale = {
+                        let dir = paths::data_dir(&h).unwrap_or_default();
+                        deskpet_store::settings::load(&dir)
+                            .locale
+                            .unwrap_or_else(|| "zh-CN".to_string())
+                    };
+                    let _ = tray::rebuild_tray(&h, &locale, &name);
                 }
             });
 

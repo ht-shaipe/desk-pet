@@ -5,6 +5,7 @@ import { useI18n } from "vue-i18n";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { CopyDocument, Grid, MagicStick, Minus, Notebook, Setting, Suitcase, Timer, User } from "@element-plus/icons-vue";
 import { useUiStore, type PanelView } from "@/stores/ui";
+import { useConfigStore } from "@/stores/config";
 import { usePomodoroStore } from "@/stores/pomodoro";
 import Launcher from "@/views/Launcher.vue";
 import Notes from "@/views/Notes.vue";
@@ -16,6 +17,7 @@ import Account from "@/views/Account.vue";
 import Settings from "@/views/Settings.vue";
 
 const ui = useUiStore();
+const config = useConfigStore();
 const pomodoro = usePomodoroStore();
 const { t } = useI18n();
 
@@ -57,7 +59,7 @@ function tabTip(label: string, view: PanelView): string {
     <div class="panel-header" @pointerdown="onHeaderPointerdown">
       <div class="panel-brand">
         <span class="brand-dot" aria-hidden="true" />
-        <span class="brand-name">Desk Pet</span>
+        <span class="brand-name">{{ config.settings.app_name ?? "Desk Pet" }}</span>
       </div>
       <el-tooltip :content="t('panel.collapse')" placement="bottom" :show-after="300">
         <button class="collapse-btn" :aria-label="t('panel.collapse')" @click="ui.collapse()">

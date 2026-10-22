@@ -30,6 +30,9 @@ pub struct AppSettings {
     /// 自定义精灵头像（app data 内绝对路径），None 用内置图标
     #[serde(default)]
     pub pet_avatar: Option<String>,
+    /// 应用显示名称，缺省为 "Desk Pet"
+    #[serde(default)]
+    pub app_name: Option<String>,
 }
 
 impl Default for AppSettings {
@@ -45,6 +48,7 @@ impl Default for AppSettings {
             auth_token: None,
             auth_user: None,
             pet_avatar: None,
+            app_name: None,
         }
     }
 }

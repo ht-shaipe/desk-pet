@@ -18,19 +18,23 @@ pub fn toggle_main(app: &AppHandle) {
     }
 }
 
-/// 按语言返回托盘文案：(显示/隐藏, 退出, tooltip)。
-fn tray_texts(locale: &str) -> (&'static str, &'static str, &'static str) {
+/// 按语言返回托盘文案：(显示/隐藏, 退出, tooltip)。tooltip 带自定义应用名。
+fn tray_texts(locale: &str, app_name: &str) -> (&'static str, &'static str, String) {
     if locale.starts_with("zh") {
-        ("显示/隐藏精灵", "退出", "Desk Pet 桌面精灵")
+        (
+            "显示/隐藏精灵",
+            "退出",
+            format!("{app_name} 桌面精灵"),
+        )
     } else {
-        ("Show / Hide Pet", "Quit", "Desk Pet")
+        ("Show / Hide Pet", "Quit", app_name.to_string())
     }
 }
 
 fn build_menu(app: &AppHandle, locale: &str) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
     use tauri::menu::{MenuBuilder, MenuItemBuilder};
 
-    let (toggle_s, quit_s, _) = tray_texts(locale);
+    let (toggle_s, quit_s, _) = tray_texts(locale, "");
     let toggle_item = MenuItemBuilder::with_id("toggle", toggle_s).build(app)?;
     let quit_item = MenuItemBuilder::with_id("quit", quit_s).build(app)?;
 
@@ -40,11 +44,11 @@ fn build_menu(app: &AppHandle, locale: &str) -> tauri::Result<tauri::menu::Menu<
         .build()
 }
 
-pub fn create_tray(app: &AppHandle, locale: &str) -> tauri::Result<()> {
+pub fn create_tray(app: &AppHandle, locale: &str, app_name: &str) -> tauri::Result<()> {
     use tauri::tray::TrayIconBuilder;
 
     let menu = build_menu(app, locale)?;
-    let (_, _, tooltip_s) = tray_texts(locale);
+    let (_, _, tooltip_s) = tray_texts(locale, app_name);
 
     let icon = app
         .default_window_icon()
@@ -65,10 +69,10 @@ pub fn create_tray(app: &AppHandle, locale: &str) -> tauri::Result<()> {
     Ok(())
 }
 
-/// 语言切换时重建托盘菜单与提示文案。
-pub fn rebuild_tray(app: &AppHandle, locale: &str) -> tauri::Result<()> {
+/// 语言切换或应用名变更时重建托盘菜单与提示文案。
+pub fn rebuild_tray(app: &AppHandle, locale: &str, app_name: &str) -> tauri::Result<()> {
     let menu = build_menu(app, locale)?;
-    let (_, _, tooltip_s) = tray_texts(locale);
+    let (_, _, tooltip_s) = tray_texts(locale, app_name);
     if let Some(tray) = app.tray_by_id("desk-pet-tray") {
         tray.set_menu(Some(menu))?;
         let _ = tray.set_tooltip(Some(tooltip_s));

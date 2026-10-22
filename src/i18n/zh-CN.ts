@@ -212,6 +212,9 @@ export default {
   },
   settings: {
     title: "设置",
+    appName: "应用名称",
+    appNameDesc: "面板与托盘中显示的名称",
+    appNameOk: "应用名称已更新",
     lang: "语言",
     langDesc: "界面显示语言",
     theme: "主题",
@@ -241,5 +244,10 @@ export default {
     tray: "托盘菜单",
     trayDesc: "菜单栏图标可显示/隐藏精灵、退出应用",
     about: "关于",
+    checkUpdate: "检查更新",
+    updateChecking: "检查中...",
+    updateRestart: "重启安装",
+    upToDate: "已是最新版本",
+    updateFail: "检查更新失败: {err}",
   },
 };

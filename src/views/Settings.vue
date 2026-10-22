@@ -5,6 +5,7 @@ import { ElMessage } from "element-plus";
 import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useConfigStore } from "@/stores/config";
+import { useUpdater } from "@/composables/useUpdater";
 
 const { t } = useI18n();
 const config = useConfigStore();
@@ -53,6 +54,13 @@ onMounted(async () => {
   } catch {
     autostart.value = false;
   }
+  appNameModel.value = config.settings.app_name ?? "";
+  try {
+    const { getVersion } = await import("@tauri-apps/api/app");
+    version.value = await getVersion();
+  } catch {
+    version.value = "?";
+  }
 });
 
 async function onAlwaysOnTop(val: string | number | boolean) {
@@ -61,6 +69,58 @@ async function onAlwaysOnTop(val: string | number | boolean) {
 
 async function onLocaleChange(val: string | number | boolean) {
   await config.setLocale(String(val));
+}
+
+async function onAppNameChange() {
+  const name = (appNameModel.value ?? "").trim();
+  if (!name || name === config.settings.app_name) {
+    appNameModel.value = config.settings.app_name ?? "";
+    return;
+  }
+  await config.setAppName(name);
+  ElMessage.success(t("settings.appNameOk"));
+}
+
+const appNameModel = ref("");
+
+const updater = useUpdater();
+const version = ref("...");
+const updateBtnDisabled = computed(
+  () => updater.status.value === "checking" || updater.status.value === "downloading"
+);
+
+/** 检查更新按钮文案状态 */
+const updateBtnText = computed(() => {
+  switch (updater.status.value) {
+    case "checking":
+      return t("settings.updateChecking");
+    case "downloading":
+      return `${updater.downloadProgress.value}%`;
+    case "ready":
+      return t("settings.updateRestart");
+    default:
+      return t("settings.checkUpdate");
+  }
+});
+
+async function onCheckUpdate() {
+  if (updater.status.value === "ready") {
+    await updater.relaunchApp();
+    return;
+  }
+  if (updater.status.value === "checking" || updater.status.value === "downloading") {
+    return;
+  }
+  const found = await updater.checkForUpdate();
+  if (!found) {
+    if (updater.status.value === "up-to-date") {
+      ElMessage.success(t("settings.upToDate"));
+    } else {
+      ElMessage.error(t("settings.updateFail", { err: updater.errorMsg.value }));
+    }
+  } else {
+    await updater.startUpdateFromNotification();
+  }
 }
 
 
@@ -86,6 +146,20 @@ async function onAutostart(val: string | number | boolean) {
     </div>
     <el-scrollbar class="view-scroll">
       <div class="settings-list">
+        <div class="settings-row">
+          <div class="row-info">
+            <div class="row-title">{{ t("settings.appName") }}</div>
+            <div class="row-desc">{{ t("settings.appNameDesc") }}</div>
+          </div>
+          <el-input
+            v-model="appNameModel"
+            size="small"
+            maxlength="24"
+            class="app-name-input"
+            :placeholder="config.settings.app_name ?? 'Desk Pet'"
+            @change="onAppNameChange"
+          />
+        </div>
         <div class="settings-row">
           <div class="row-info">
             <div class="row-title">{{ t("settings.lang") }}</div>
@@ -194,8 +268,11 @@ async function onAutostart(val: string | number | boolean) {
         <div class="settings-row">
           <div class="row-info">
             <div class="row-title">{{ t("settings.about") }}</div>
-            <div class="row-desc">Desk Pet v0.1.0 · {{ config.platform || "..." }}</div>
+            <div class="row-desc">Desk Pet v{{ version }} · {{ config.platform || "..." }}</div>
           </div>
+          <el-button size="small" :disabled="updateBtnDisabled" @click="onCheckUpdate">
+            {{ updateBtnText }}
+          </el-button>
         </div>
       </div>
     </el-scrollbar>
@@ -235,6 +312,10 @@ async function onAutostart(val: string | number | boolean) {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.app-name-input {
+  width: 150px;
 }
 
 .row-title {

@@ -274,7 +274,7 @@ onMounted(async () => {
     <div v-else class="brand-card">
       <div class="brand-head">
         <img class="brand-logo" src="/images/avatar.png" alt="logo" draggable="false" />
-        <div class="brand-title">Desk Pet</div>
+        <div class="brand-title">{{ config.settings.app_name ?? "Desk Pet" }}</div>
         <div class="brand-sub">{{ mode === "login" ? t("account.welcomeBack") : t("account.createAccount") }}</div>
       </div>
 
