@@ -255,48 +255,69 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="account-view">
+  <div class="flex flex-col overflow-y-auto pt-1.5 px-0.5 pb-0.5">
     <!-- 已登录 -->
-    <div v-if="loggedIn" class="logged-card">
-      <div class="logged-head">
-        <div class="avatar"><el-icon :size="30"><UserFilled /></el-icon></div>
-        <div class="user-name">{{ maskedUser }}</div>
+    <div v-if="loggedIn" class="bg-dp-card-bg border border-dp-card-border rounded-[14px] shadow-dp-card overflow-hidden">
+      <div
+        class="flex flex-col items-center pt-5 px-4 pb-3.5 text-white bg-[linear-gradient(135deg,var(--dp-accent),var(--dp-accent-deep,#2f7de1))]"
+      >
+        <div
+          class="w-14 h-14 rounded-full bg-[rgba(255,255,255,0.22)] border-2 border-[rgba(255,255,255,0.65)] flex items-center justify-center backdrop-blur-[4px]"
+        >
+          <el-icon :size="30"><UserFilled /></el-icon>
+        </div>
+        <div class="mt-2 text-[15px] font-semibold tracking-[0.5px]">{{ maskedUser }}</div>
       </div>
-      <div class="logged-body">
-        <div class="user-hint">{{ t("account.syncHint") }}</div>
-        <el-button size="small" class="logout-btn" @click="onLogout">
+      <div class="flex flex-col items-center gap-2.5 pt-3.5 px-4 pb-4.5">
+        <div class="text-xs text-dp-muted">{{ t("account.syncHint") }}</div>
+        <el-button size="small" class="w-full" @click="onLogout">
           {{ t("account.logout") }}
         </el-button>
       </div>
     </div>
 
     <!-- 未登录 -->
-    <div v-else class="brand-card">
-      <div class="brand-head">
-        <img class="brand-logo" src="/images/avatar.png" alt="logo" draggable="false" />
-        <div class="brand-title">{{ config.settings.app_name ?? "Desk Pet" }}</div>
-        <div class="brand-sub">{{ mode === "login" ? t("account.welcomeBack") : t("account.createAccount") }}</div>
+    <div v-else class="bg-dp-card-bg border border-dp-card-border rounded-[14px] shadow-dp-card overflow-hidden">
+      <div
+        class="flex flex-col items-center pt-5.5 px-4 pb-4 text-white bg-[linear-gradient(160deg,var(--dp-accent)_-20%,var(--dp-accent-deep,#2f7de1)_85%)]"
+      >
+        <img
+          class="w-[46px] h-[46px] rounded-full border-2 border-[rgba(255,255,255,0.7)] shadow-[0_4px_12px_rgba(0,0,0,0.2)] object-cover"
+          src="/images/avatar.png"
+          alt="logo"
+          draggable="false"
+        />
+        <div class="mt-2 text-[15px] font-bold tracking-[1px]">{{ config.settings.app_name ?? "Desk Pet" }}</div>
+        <div class="mt-[3px] text-xs opacity-85">{{ mode === "login" ? t("account.welcomeBack") : t("account.createAccount") }}</div>
       </div>
 
-      <div class="brand-body">
-        <div class="seg-tabs">
+      <div class="px-4 pt-4 pb-4.5">
+        <div class="flex gap-1 p-[3px] bg-dp-btn-bg rounded-[10px] mb-3.5">
           <button
-            class="seg-tab"
-            :class="{ active: mode === 'login' }"
+            class="flex-1 rounded-lg py-[7px] text-[13px] cursor-pointer transition-all duration-200 ease-[ease]"
+            :class="
+              mode === 'login'
+                ? 'bg-dp-card-bg text-dp-accent font-semibold shadow-[0_1px_4px_rgba(31,41,55,0.12)]'
+                : 'bg-transparent text-dp-muted font-medium hover:text-dp-primary'
+            "
             @click="switchMode('login')"
           >
             {{ t("account.login") }}
           </button>
           <button
-            class="seg-tab"
-            :class="{ active: mode === 'register' }"
+            class="flex-1 rounded-lg py-[7px] text-[13px] cursor-pointer transition-all duration-200 ease-[ease]"
+            :class="
+              mode === 'register'
+                ? 'bg-dp-card-bg text-dp-accent font-semibold shadow-[0_1px_4px_rgba(31,41,55,0.12)]'
+                : 'bg-transparent text-dp-muted font-medium hover:text-dp-primary'
+            "
             @click="switchMode('register')"
           >
             {{ t("account.register") }}
           </button>
         </div>
 
-        <div class="form">
+        <div class="flex flex-col gap-3 [&_.el-input\_\_wrapper]:rounded-[10px]">
           <el-input
             v-model="mobile"
             size="large"
@@ -324,56 +345,80 @@ onMounted(async () => {
           />
 
           <!-- 图形验证码 -->
-          <div v-if="currentVerifyMode === 'captcha'" class="captcha-row">
+          <div v-if="currentVerifyMode === 'captcha'" class="flex gap-2 items-center">
             <el-input
               v-model="captchaCode"
               size="large"
               :placeholder="t('account.captchaPh')"
               maxlength="4"
-              class="captcha-input"
+              class="flex-1"
             />
             <img
               v-if="captcha"
               :src="sliderImageSrc(captcha.image)"
-              class="captcha-img"
+              class="h-10 rounded-[10px] cursor-pointer border border-dp-card-border transition-transform duration-150 ease-[ease] hover:scale-[1.03]"
               :title="t('account.refreshCaptcha')"
               @click="refreshCaptcha"
             />
           </div>
 
           <!-- 滑块验证 -->
-          <div v-else-if="currentVerifyMode === 'slider'" ref="sliderWrap" class="slider-wrap">
-            <div v-if="slider" class="slider-track" :style="sliderBoxStyle">
+          <div v-else-if="currentVerifyMode === 'slider'" ref="sliderWrap" class="w-full">
+            <div
+              v-if="slider"
+              class="relative h-11 rounded-[10px] bg-dp-btn-bg border border-dp-card-border overflow-hidden"
+              :style="sliderBoxStyle"
+            >
               <div
-                class="slider-target"
+                class="absolute top-0 bottom-0 border-2 border-dashed border-dp-accent rounded-[10px] opacity-45 box-border pointer-events-none"
                 :style="{
                   left: `${slider.targetX * sliderScale}px`,
                   width: `${slider.sliderWidth * sliderScale}px`,
                 }"
               ></div>
-              <div class="slider-mask" :style="{ width: `${sliderX * sliderScale}px` }"></div>
               <div
-                class="slider-handle"
-                :class="{ done: sliderDone }"
+                class="absolute top-0 bottom-0 left-0 bg-[linear-gradient(90deg,rgba(64,158,255,0.08),rgba(64,158,255,0.18))] border-r border-[rgba(64,158,255,0.35)] pointer-events-none"
+                :style="{ width: `${sliderX * sliderScale}px` }"
+              ></div>
+              <div
+                class="absolute top-[3px] bottom-[3px] rounded-lg text-white flex items-center justify-center cursor-grab active:cursor-grabbing select-none touch-none shadow-[0_2px_6px_rgba(31,41,55,0.25)]"
+                :class="
+                  sliderDone
+                    ? 'bg-[var(--el-color-success,#67c23a)]'
+                    : 'bg-[linear-gradient(160deg,var(--dp-accent),var(--dp-accent-deep,#2f7de1))]'
+                "
                 :style="{ left: `${sliderX * sliderScale}px`, width: `${slider.sliderWidth * sliderScale}px` }"
                 @pointerdown="onSliderPointerDown"
                 @pointermove="onSliderPointerMove"
                 @pointerup="onSliderPointerUp"
                 @pointercancel="onSliderPointerUp"
               >
-                <span v-if="sliderDone" class="slider-icon">✓</span>
-                <el-icon v-else class="slider-icon"><ArrowRight /></el-icon>
+                <span v-if="sliderDone" class="text-[15px] leading-none">✓</span>
+                <el-icon v-else class="text-[15px] leading-none"><ArrowRight /></el-icon>
               </div>
-              <div v-if="!sliderDone" class="slider-tip">{{ t("account.sliderHint") }}</div>
+              <div
+                v-if="!sliderDone"
+                class="absolute inset-0 flex items-center justify-center text-xs text-dp-muted pointer-events-none select-none"
+              >
+                {{ t("account.sliderHint") }}
+              </div>
             </div>
-            <div v-else class="slider-loading">
+            <div v-else class="flex items-center justify-center gap-1.5 text-xs text-dp-muted py-3.5">
               <el-icon class="is-loading"><Loading /></el-icon>
               {{ t("account.loadingVerify") }}
             </div>
           </div>
 
-          <transition name="err-fade">
-            <div v-if="errorMsg" class="error-msg">
+          <transition
+            enter-active-class="transition-[opacity,transform] duration-200 ease-[ease]"
+            leave-active-class="transition-[opacity,transform] duration-200 ease-[ease]"
+            enter-from-class="opacity-0 -translate-y-1"
+            leave-to-class="opacity-0 -translate-y-1"
+          >
+            <div
+              v-if="errorMsg"
+              class="flex items-start gap-1.5 text-xs text-[var(--el-color-danger,#f56c6c)] leading-[1.5] bg-dp-danger-soft rounded-lg px-2.5 py-2 [&_.el-icon]:shrink-0 [&_.el-icon]:mt-[1px]"
+            >
               <el-icon><CircleCloseFilled /></el-icon>
               <span>{{ errorMsg }}</span>
             </div>
@@ -381,7 +426,7 @@ onMounted(async () => {
 
           <el-button
             type="primary"
-            class="submit-btn"
+            class="w-full h-[42px] p-0 border-transparent rounded-[10px] text-sm font-semibold tracking-[2px] text-white bg-[linear-gradient(160deg,var(--dp-accent),var(--dp-accent-deep,#2f7de1))] shadow-[0_4px_12px_rgba(47,125,225,0.35)] transition-[transform,box-shadow,opacity] duration-150 ease-[ease] hover:shadow-[0_6px_16px_rgba(47,125,225,0.45)] hover:-translate-y-[1px] hover:text-white focus-visible:text-white focus-visible:shadow-[0_6px_16px_rgba(47,125,225,0.45)] focus-visible:-translate-y-[1px] active:translate-y-0 disabled:opacity-70 disabled:shadow-none disabled:transform-none disabled:border-transparent disabled:text-white hover:disabled:shadow-none hover:disabled:transform-none [&.is-loading]:before:hidden"
             :loading="loading"
             @click="submit"
           >
@@ -393,342 +438,3 @@ onMounted(async () => {
   </div>
 </template>
 
-<style scoped>
-.account-view {
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-  padding: 6px 2px 2px;
-}
-
-/* ---------- 已登录卡片 ---------- */
-
-.logged-card {
-  background: var(--dp-card-bg);
-  border: 1px solid var(--dp-card-border);
-  border-radius: 14px;
-  box-shadow: var(--dp-card-shadow);
-  overflow: hidden;
-}
-
-.logged-head {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 20px 16px 14px;
-  background: linear-gradient(135deg, var(--dp-accent), var(--dp-accent-deep, #2f7de1));
-  color: #ffffff;
-}
-
-.logged-head .avatar {
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.22);
-  border: 2px solid rgba(255, 255, 255, 0.65);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  backdrop-filter: blur(4px);
-}
-
-.logged-head .user-name {
-  margin-top: 8px;
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-}
-
-.logged-body {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  padding: 14px 16px 18px;
-}
-
-.user-hint {
-  font-size: 12px;
-  color: var(--dp-text-muted);
-}
-
-.logout-btn {
-  width: 100%;
-}
-
-/* ---------- 品牌卡片 ---------- */
-
-.brand-card {
-  background: var(--dp-card-bg);
-  border: 1px solid var(--dp-card-border);
-  border-radius: 14px;
-  box-shadow: var(--dp-card-shadow);
-  overflow: hidden;
-}
-
-.brand-head {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 22px 16px 16px;
-  background: linear-gradient(160deg, var(--dp-accent) -20%, var(--dp-accent-deep, #2f7de1) 85%);
-  color: #ffffff;
-}
-
-.brand-logo {
-  width: 46px;
-  height: 46px;
-  border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.7);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-  object-fit: cover;
-}
-
-.brand-title {
-  margin-top: 8px;
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: 1px;
-}
-
-.brand-sub {
-  margin-top: 3px;
-  font-size: 12px;
-  opacity: 0.85;
-}
-
-.brand-body {
-  padding: 16px 16px 18px;
-}
-
-/* ---------- 分段切换 ---------- */
-
-.seg-tabs {
-  display: flex;
-  gap: 4px;
-  padding: 3px;
-  background: var(--dp-btn-bg);
-  border-radius: 10px;
-  margin-bottom: 14px;
-}
-
-.seg-tab {
-  flex: 1;
-  border: none;
-  border-radius: 8px;
-  padding: 7px 0;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--dp-text-muted);
-  background: transparent;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.seg-tab:hover {
-  color: var(--dp-text-primary);
-}
-
-.seg-tab.active {
-  background: var(--dp-card-bg);
-  color: var(--dp-accent);
-  font-weight: 600;
-  box-shadow: 0 1px 4px rgba(31, 41, 55, 0.12);
-}
-
-/* ---------- 表单 ---------- */
-
-.form {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.form :deep(.el-input__wrapper) {
-  border-radius: 10px;
-}
-
-.captcha-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.captcha-input {
-  flex: 1;
-}
-
-.captcha-img {
-  height: 40px;
-  border-radius: 10px;
-  cursor: pointer;
-  border: 1px solid var(--dp-card-border);
-  transition: transform 0.15s ease;
-}
-
-.captcha-img:hover {
-  transform: scale(1.03);
-}
-
-/* ---------- 滑块验证 ---------- */
-
-.slider-wrap {
-  width: 100%;
-}
-
-.slider-track {
-  position: relative;
-  height: 44px;
-  border-radius: 10px;
-  background: var(--dp-btn-bg);
-  border: 1px solid var(--dp-card-border);
-  overflow: hidden;
-}
-
-.slider-mask {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  background: linear-gradient(90deg, rgba(64, 158, 255, 0.08), rgba(64, 158, 255, 0.18));
-  border-right: 1px solid rgba(64, 158, 255, 0.35);
-  pointer-events: none;
-}
-
-.slider-target {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  border: 2px dashed var(--dp-accent);
-  border-radius: 10px;
-  opacity: 0.45;
-  box-sizing: border-box;
-  pointer-events: none;
-}
-
-.slider-tip {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  color: var(--dp-text-muted);
-  pointer-events: none;
-  user-select: none;
-}
-
-.slider-handle {
-  position: absolute;
-  top: 3px;
-  bottom: 3px;
-  border-radius: 8px;
-  background: linear-gradient(160deg, var(--dp-accent), var(--dp-accent-deep, #2f7de1));
-  color: #ffffff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: grab;
-  user-select: none;
-  touch-action: none;
-  box-shadow: 0 2px 6px rgba(31, 41, 55, 0.25);
-}
-
-.slider-handle:active {
-  cursor: grabbing;
-}
-
-.slider-handle.done {
-  background: var(--el-color-success, #67c23a);
-}
-
-.slider-icon {
-  font-size: 15px;
-  line-height: 1;
-}
-
-.slider-loading {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--dp-text-muted);
-  padding: 14px 0;
-}
-
-/* ---------- 错误提示 ---------- */
-
-.error-msg {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--el-color-danger, #f56c6c);
-  line-height: 1.5;
-  background: var(--dp-danger-soft);
-  border-radius: 8px;
-  padding: 8px 10px;
-}
-
-.error-msg .el-icon {
-  flex-shrink: 0;
-  margin-top: 1px;
-}
-
-.err-fade-enter-active,
-.err-fade-leave-active {
-  transition: opacity 0.2s ease, transform 0.2s ease;
-}
-
-.err-fade-enter-from,
-.err-fade-leave-to {
-  opacity: 0;
-  transform: translateY(-4px);
-}
-
-/* ---------- 提交按钮 ---------- */
-
-.submit-btn {
-  width: 100%;
-  height: 42px;
-  padding: 0;
-  border-color: transparent;
-  border-radius: 10px;
-  font-size: 14px;
-  font-weight: 600;
-  letter-spacing: 2px;
-  color: #ffffff;
-  background: linear-gradient(160deg, var(--dp-accent), var(--dp-accent-deep, #2f7de1));
-  box-shadow: 0 4px 12px rgba(47, 125, 225, 0.35);
-  transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
-}
-
-.submit-btn:hover,
-.submit-btn:focus-visible {
-  color: #ffffff;
-  background: linear-gradient(160deg, var(--dp-accent), var(--dp-accent-deep, #2f7de1));
-  box-shadow: 0 6px 16px rgba(47, 125, 225, 0.45);
-  transform: translateY(-1px);
-}
-
-.submit-btn:active {
-  transform: translateY(0);
-}
-
-/* loading 时移除 Element 默认的白色遮罩，保持渐变底色 */
-.submit-btn.is-loading::before {
-  display: none;
-}
-
-.submit-btn.is-disabled,
-.submit-btn.is-disabled:hover,
-.submit-btn:disabled {
-  color: #ffffff;
-  background: linear-gradient(160deg, var(--dp-accent), var(--dp-accent-deep, #2f7de1));
-  border-color: transparent;
-  opacity: 0.7;
-  box-shadow: none;
-  transform: none;
-}
-</style>

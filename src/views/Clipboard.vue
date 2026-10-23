@@ -54,7 +54,7 @@ async function onClear() {
 </script>
 
 <template>
-  <div class="clip-view view-root [&_.view-toolbar]:gap-1.5">
+  <div class="view-root [&_.view-toolbar]:gap-1.5">
     <div class="view-toolbar">
       <el-input v-model="keyword" size="small" clearable :placeholder="t('clipboard.searchPh')" :prefix-icon="Search" />
       <el-popconfirm

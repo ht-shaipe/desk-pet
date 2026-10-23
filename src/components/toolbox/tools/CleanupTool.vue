@@ -29,9 +29,17 @@ const stats = reactive({ count: 0, bytes: 0, errors: 0, truncated: false });
 const progress = reactive({ dirs: 0, files: 0, bytes: 0, current: "" });
 const removal = reactive({ removed: 0, failed: 0, bytes: 0 });
 
+// 勾选待删除项（Set 响应式代理仅对方法调用生效，变更时整体替换以触发更新）
+const selectedIds = ref(new Set<string>());
+
 const activeJobId = ref("");
 const scanJobId = ref("");
 const stream = ref<EventSource | null>(null);
+
+// 手动输入路径（目录选择器看不到 /tmp 等隐藏目录时直接粘贴路径）
+const editingPath = ref(false);
+const pathDraft = ref("");
+let homeDirCache = "";
 
 const busy = computed(() => phase.value === "scanning" || phase.value === "deleting");
 const statusVisible = computed(() => phase.value !== "idle");
@@ -60,6 +68,17 @@ const totalBytes = computed(() =>
   phase.value === "done" ? removal.bytes : stats.bytes || progress.bytes,
 );
 
+const selectedBytes = computed(() =>
+  candidates.value.reduce((sum, item) => (selectedIds.value.has(item.id) ? sum + item.bytes : sum), 0),
+);
+
+const allSelected = computed(
+  () => candidates.value.length > 0 && selectedIds.value.size >= candidates.value.length,
+);
+const someSelected = computed(
+  () => selectedIds.value.size > 0 && selectedIds.value.size < candidates.value.length,
+);
+
 const phaseText = computed(() => {
   switch (phase.value) {
     case "scanning":
@@ -73,6 +92,17 @@ const phaseText = computed(() => {
     default:
       return "";
   }
+});
+
+/** 状态点颜色：删除中/部分失败橙色，完成绿色，其余强调色。 */
+const statusDotClass = computed(() => {
+  if (phase.value === "deleting" || (phase.value === "done" && removal.failed > 0)) {
+    return "bg-[#e6a23c]";
+  }
+  if (phase.value === "scanned" || phase.value === "done") {
+    return "bg-[#67c23a]";
+  }
+  return "bg-dp-accent";
 });
 
 function fmt(bytes: number): string {
@@ -108,6 +138,63 @@ async function pickRoot() {
   }
 }
 
+function startPathInput() {
+  if (busy.value) {
+    return;
+  }
+  pathDraft.value = root.value;
+  editingPath.value = true;
+}
+
+async function confirmPathInput() {
+  let value = pathDraft.value.trim();
+  if (!value) {
+    editingPath.value = false;
+    return;
+  }
+  if (value === "~") {
+    value = homeDirCache || (await homeDir());
+  } else if (value.startsWith("~/")) {
+    value = (homeDirCache || (await homeDir())) + value.slice(1);
+  }
+  if (!value.startsWith("/")) {
+    ElMessage.warning(t("toolbox.tools.cleanup.pathInvalid"));
+    return;
+  }
+  root.value = value;
+  editingPath.value = false;
+  resetResults();
+}
+
+function toggleItem(id: string, checked?: boolean) {
+  const next = new Set(selectedIds.value);
+  const want = checked ?? !next.has(id);
+  if (want) {
+    next.add(id);
+  } else {
+    next.delete(id);
+  }
+  selectedIds.value = next;
+}
+
+function toggleSelectAll(checked: boolean) {
+  selectedIds.value = checked ? new Set(candidates.value.map((item) => item.id)) : new Set();
+}
+
+/** 组标题复选框：整组已选则取消，否则整组勾选。 */
+function toggleGroup(group: { items: CleanupCandidate[] }) {
+  const selected = group.items.some((item) => selectedIds.value.has(item.id));
+  const next = new Set(selectedIds.value);
+  for (const item of group.items) {
+    if (selected) {
+      next.delete(item.id);
+    } else {
+      next.add(item.id);
+    }
+  }
+  selectedIds.value = next;
+}
+
 function closeStream() {
   stream.value?.close();
   stream.value = null;
@@ -122,6 +209,7 @@ function resetResults() {
   candidates.value = [];
   deletedIds.value = new Set();
   failedIds.value = new Set();
+  selectedIds.value = new Set();
   deletingId.value = "";
   Object.assign(stats, { count: 0, bytes: 0, errors: 0, truncated: false });
   Object.assign(progress, { dirs: 0, files: 0, bytes: 0, current: "" });
@@ -175,6 +263,7 @@ function handleEvent(data: CleanupEvent) {
       break;
     case "found":
       candidates.value.push(...data.items);
+      // 扫描中新发现的项不默认勾选，扫描结束后统一全选
       break;
     case "scanDone":
       Object.assign(stats, {
@@ -184,6 +273,7 @@ function handleEvent(data: CleanupEvent) {
         truncated: data.truncated,
       });
       progress.bytes = data.bytes;
+      selectedIds.value = new Set(candidates.value.map((item) => item.id));
       phase.value = "scanned";
       closeStream();
       break;
@@ -197,6 +287,10 @@ function handleEvent(data: CleanupEvent) {
         deletedIds.value.add(data.id);
         removal.removed += 1;
         removal.bytes += data.bytes;
+        // 已删除项退出勾选集
+        const next = new Set(selectedIds.value);
+        next.delete(data.id);
+        selectedIds.value = next;
       } else {
         failedIds.value.add(data.id);
         removal.failed += 1;
@@ -261,14 +355,14 @@ async function startScan() {
 }
 
 async function startClean() {
-  if (!scanJobId.value || candidates.value.length === 0) {
+  if (!scanJobId.value || selectedIds.value.size === 0) {
     return;
   }
   try {
     await ElMessageBox.confirm(
       t("toolbox.tools.cleanup.confirmBody", {
-        count: candidates.value.length,
-        size: fmt(stats.bytes || totalBytes.value),
+        count: selectedIds.value.size,
+        size: fmt(selectedBytes.value),
       }),
       t("toolbox.tools.cleanup.confirmTitle"),
       {
@@ -284,7 +378,7 @@ async function startClean() {
   phase.value = "deleting";
   Object.assign(removal, { removed: 0, failed: 0, bytes: 0 });
   try {
-    const job = await deleteDiskCleanup(scanJobId.value);
+    const job = await deleteDiskCleanup(scanJobId.value, [...selectedIds.value]);
     connect(job.jobId, job.url);
   } catch (e) {
     phase.value = "scanned";
@@ -314,7 +408,8 @@ async function stop() {
 
 onMounted(async () => {
   try {
-    root.value = await homeDir();
+    homeDirCache = await homeDir();
+    root.value = homeDirCache;
   } catch {
     // 取不到用户目录时由用户手动选择
   }
@@ -331,28 +426,58 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="cleanup-tool">
+  <div class="flex h-full min-h-0 flex-col">
     <el-scrollbar class="view-scroll">
-      <p class="intro-hint">{{ t("toolbox.tools.cleanup.rootHint") }}</p>
+      <p class="m-[2px_2px_8px] text-[10.5px] leading-[1.5] text-dp-tertiary">
+        {{ t("toolbox.tools.cleanup.rootHint") }}
+      </p>
 
-      <section class="setting-card">
-        <div class="card-label">{{ t("toolbox.tools.cleanup.root") }}</div>
-        <div class="root-row">
-          <el-icon class="root-icon" :size="14"><FolderOpened /></el-icon>
-          <span class="root-path" :class="{ empty: !root }" :title="root">
+      <section class="mb-2 rounded-[10px] border border-dp-card-border bg-dp-card-bg px-2.5 py-[9px]">
+        <div class="mb-1.5 text-[10.5px] font-semibold tracking-[0.03em] text-dp-tertiary">
+          {{ t("toolbox.tools.cleanup.root") }}
+        </div>
+        <div v-if="!editingPath" class="flex min-w-0 items-center gap-1.5">
+          <el-icon class="shrink-0 text-dp-accent" :size="14"><FolderOpened /></el-icon>
+          <span
+            class="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-[11.5px]"
+            :class="root ? 'text-dp-secondary' : 'text-dp-tertiary'"
+            :title="root"
+          >
             {{ root || t("toolbox.tools.cleanup.rootEmpty") }}
           </span>
+          <el-button size="small" text type="primary" :disabled="busy" @click="startPathInput">
+            {{ t("toolbox.tools.cleanup.pathInput") }}
+          </el-button>
           <el-button size="small" text type="primary" :disabled="busy" @click="pickRoot">
             {{ t("toolbox.tools.cleanup.choose") }}
           </el-button>
         </div>
+        <div v-else class="flex min-w-0 items-center gap-1.5">
+          <el-input
+            v-model="pathDraft"
+            size="small"
+            class="min-w-0 flex-1 [&_.el-input\_\_inner]:text-[11.5px] [&_.el-input\_\_wrapper]:px-2 [&_.el-input\_\_wrapper]:py-0"
+            placeholder="/tmp ~ 或绝对路径"
+            autofocus
+            @keyup.enter="confirmPathInput"
+            @keyup.esc="editingPath = false"
+          />
+          <el-button size="small" text type="primary" @click="confirmPathInput">
+            {{ t("common.confirm") }}
+          </el-button>
+          <el-button size="small" text @click="editingPath = false">
+            {{ t("common.cancel") }}
+          </el-button>
+        </div>
       </section>
 
-      <section class="setting-card">
-        <div class="card-label">{{ t("toolbox.tools.cleanup.scope") }}</div>
+      <section class="mb-2 rounded-[10px] border border-dp-card-border bg-dp-card-bg px-2.5 py-[9px]">
+        <div class="mb-1.5 text-[10.5px] font-semibold tracking-[0.03em] text-dp-tertiary">
+          {{ t("toolbox.tools.cleanup.scope") }}
+        </div>
         <el-checkbox-group
           v-model="targets"
-          class="target-list"
+          class="flex flex-col gap-0.5"
           :disabled="busy"
           @change="resetResults"
         >
@@ -360,20 +485,20 @@ onBeforeUnmount(() => {
             v-for="option in targetOptions"
             :key="option.value"
             :value="option.value"
-            class="target-check"
+            class="mr-0 h-auto items-start py-0.5 [&_.el-checkbox\_\_input]:mt-0.5 [&_.el-checkbox\_\_label]:pl-2"
           >
-            <span class="target-text">
-              <span class="target-name">{{ option.label }}</span>
-              <span class="target-hint">{{ option.hint }}</span>
+            <span class="flex flex-col leading-[1.35]">
+              <span class="text-xs text-dp-secondary">{{ option.label }}</span>
+              <span class="text-[10px] text-dp-tertiary">{{ option.hint }}</span>
             </span>
           </el-checkbox>
         </el-checkbox-group>
-        <div v-if="targets.includes('logs')" class="age-row">
-          <span class="age-label">{{ t("toolbox.tools.cleanup.logAge") }}</span>
+        <div class="mt-2 flex items-center gap-2 border-t border-dashed border-dp-divider pt-2">
+          <span class="text-[11px] text-dp-muted">{{ t("toolbox.tools.cleanup.logAge") }}</span>
           <el-select
             v-model="logDays"
             size="small"
-            class="age-select"
+            class="ml-auto w-32"
             :disabled="busy"
             @change="resetResults"
           >
@@ -382,21 +507,30 @@ onBeforeUnmount(() => {
             <el-option :value="0" :label="t('toolbox.tools.cleanup.age.all')" />
           </el-select>
         </div>
-        <div class="age-hint" v-if="targets.includes('logs')">
+        <div
+          v-if="targets.includes('logs')"
+          class="mt-1.5 text-[10px] leading-[1.45] text-dp-tertiary"
+        >
           {{ t("toolbox.tools.cleanup.ageHint") }}
         </div>
       </section>
 
-      <section v-if="statusVisible" class="setting-card status-card">
-        <div class="status-head">
-          <span class="status-dot" :class="[phase, { partial: phase === 'done' && removal.failed > 0 }]" aria-hidden="true" />
-          <span class="status-title">{{ phaseText }}</span>
-          <el-icon v-if="busy" class="is-loading status-spin" :size="12"><Loading /></el-icon>
-          <span class="status-size" :title="t('toolbox.tools.cleanup.reclaimable')">
+      <section
+        v-if="statusVisible"
+        class="mb-2 rounded-[10px] border border-[color-mix(in_srgb,var(--dp-accent)_35%,var(--dp-card-border))] bg-dp-card-bg px-2.5 py-[9px]"
+      >
+        <div class="flex items-center gap-1.5">
+          <span class="size-1.5 shrink-0 rounded-full" :class="statusDotClass" aria-hidden="true" />
+          <span class="text-xs font-semibold text-dp-secondary">{{ phaseText }}</span>
+          <el-icon v-if="busy" class="is-loading text-dp-accent" :size="12"><Loading /></el-icon>
+          <span
+            class="ml-auto text-[11px] font-semibold text-dp-accent"
+            :title="t('toolbox.tools.cleanup.reclaimable')"
+          >
             {{ fmt(totalBytes) }}
           </span>
         </div>
-        <div class="status-metrics">
+        <div class="mt-[5px] flex flex-wrap gap-x-2.5 gap-y-1 text-[10.5px] text-dp-muted">
           <span>
             {{ t("toolbox.tools.cleanup.found") }}
             {{ phase === "scanned" ? stats.count : candidates.length }}
@@ -413,58 +547,118 @@ onBeforeUnmount(() => {
             {{ t("toolbox.tools.cleanup.removed") }} {{ removal.removed }} / {{ candidates.length }}
           </span>
         </div>
-        <div class="current-path" :title="progress.current">{{ progress.current }}</div>
-        <div v-if="busy" class="progress-track" aria-hidden="true">
-          <span class="progress-bar" />
+        <div
+          class="mt-[5px] overflow-hidden text-ellipsis whitespace-nowrap font-[ui-monospace,SFMono-Regular,Menlo,monospace] text-[10px] text-dp-tertiary"
+          :title="progress.current"
+        >
+          {{ progress.current }}
         </div>
-        <div v-if="stats.truncated" class="warn-line">
+        <div v-if="busy" class="mt-2 h-[3px] overflow-hidden rounded-[99px] bg-dp-btn-bg" aria-hidden="true">
+          <span
+            class="block h-full w-[32%] rounded-[99px] bg-[linear-gradient(90deg,var(--dp-accent),var(--dp-accent-deep,#2f7de1))] animate-cleanup-slide motion-reduce:h-full motion-reduce:w-full motion-reduce:opacity-50 motion-reduce:animate-none"
+          />
+        </div>
+        <div v-if="stats.truncated" class="mt-[5px] text-[10px] leading-[1.45] text-[#e6a23c]">
           {{ t("toolbox.tools.cleanup.truncated") }}
         </div>
-        <div v-if="stats.errors > 0 && !busy" class="warn-line">
+        <div
+          v-if="stats.errors > 0 && !busy"
+          class="mt-[5px] text-[10px] leading-[1.45] text-[#e6a23c]"
+        >
           {{ t("toolbox.tools.cleanup.errors", { n: stats.errors }) }}
         </div>
       </section>
 
-      <section v-if="groups.length > 0" class="results">
-        <div class="results-head">
-          <span class="card-label">{{ t("toolbox.tools.cleanup.results") }}</span>
-          <span class="results-total">{{ candidates.length }} · {{ fmt(stats.bytes || progress.bytes) }}</span>
+      <section v-if="groups.length > 0" class="mt-0.5">
+        <div class="flex items-center gap-2 px-0.5 pb-1.5 pt-0.5">
+          <el-checkbox
+            class="shrink-0 text-[10.5px]"
+            :model-value="allSelected"
+            :indeterminate="someSelected"
+            :disabled="busy"
+            @change="(v: boolean) => toggleSelectAll(v)"
+          >
+            {{ t("toolbox.tools.cleanup.selectAll") }}
+          </el-checkbox>
+          <span class="mb-0 text-[10.5px] font-semibold tracking-[0.03em] text-dp-tertiary">
+            {{ t("toolbox.tools.cleanup.results") }}
+          </span>
+          <span class="ml-auto text-[10.5px] text-dp-tertiary">
+            {{ t("toolbox.tools.cleanup.selected") }} {{ selectedIds.size }} / {{ candidates.length }} ·
+            {{ fmt(selectedBytes) }}
+          </span>
         </div>
-        <div v-for="group in groups" :key="group.kind" class="result-group">
-          <div class="group-head">
-            <span>{{ group.label }}</span>
-            <span>{{ group.items.length }} · {{ fmt(group.bytes) }}</span>
+        <div
+          v-for="group in groups"
+          :key="group.kind"
+          class="mb-2 overflow-hidden rounded-[10px] border border-dp-card-border bg-dp-card-bg"
+        >
+          <div class="flex items-center justify-between gap-2 bg-dp-btn-bg px-2.5 py-1.5 text-[10.5px] font-semibold text-dp-secondary">
+            <span class="flex min-w-0 items-center gap-1.5">
+              <el-checkbox
+                class="[&_.el-checkbox\_\_label]:p-0 [&_.el-checkbox\_\_label]:text-current"
+                :model-value="group.items.every((item) => selectedIds.has(item.id))"
+                :indeterminate="
+                  group.items.some((item) => selectedIds.has(item.id)) &&
+                  !group.items.every((item) => selectedIds.has(item.id))
+                "
+                :disabled="busy"
+                @change="() => toggleGroup(group)"
+              />
+              <span class="truncate">{{ group.label }}</span>
+            </span>
+            <span class="shrink-0">{{ group.items.length }} · {{ fmt(group.bytes) }}</span>
           </div>
-          <div class="result-list">
+          <div>
             <div
               v-for="item in group.items.slice(0, PREVIEW_LIMIT)"
               :key="item.id"
-              class="result-row"
-              :class="{ removed: deletedIds.has(item.id), failed: failedIds.has(item.id) }"
+              class="flex cursor-pointer items-center gap-1.5 border-t border-dp-divider px-2.5 py-[5px]"
+              @click="!busy && !deletedIds.has(item.id) && toggleItem(item.id)"
             >
-              <span class="row-path" :title="item.path">{{ item.path }}</span>
-              <el-icon v-if="deletingId === item.id" class="is-loading row-spin" :size="11">
+              <el-checkbox
+                class="shrink-0 [&_.el-checkbox\_\_label]:p-0"
+                :model-value="selectedIds.has(item.id)"
+                :disabled="busy || deletedIds.has(item.id)"
+                @change="(v: boolean) => toggleItem(item.id, v)"
+                @click.stop
+              />
+              <span
+                class="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-[10px] leading-[1.4] text-dp-muted [&.failed]:text-[#f56c6c] [&.removed]:text-dp-tertiary [&.removed]:line-through [&.removed]:opacity-60"
+                :class="{
+                  removed: deletedIds.has(item.id),
+                  failed: failedIds.has(item.id),
+                }"
+                :title="item.path"
+              >{{ item.path }}</span>
+              <el-icon v-if="deletingId === item.id" class="is-loading shrink-0 text-dp-accent" :size="11">
                 <Loading />
               </el-icon>
-              <span class="row-size">{{ fmt(item.bytes) }}</span>
+              <span class="shrink-0 text-[10px] text-dp-tertiary">{{ fmt(item.bytes) }}</span>
             </div>
-            <div v-if="group.items.length > PREVIEW_LIMIT" class="more">
+            <div
+              v-if="group.items.length > PREVIEW_LIMIT"
+              class="border-t border-dp-divider px-2.5 py-[5px] text-[10px] text-dp-tertiary"
+            >
               {{ t("toolbox.tools.cleanup.more", { n: group.items.length - PREVIEW_LIMIT }) }}
             </div>
           </div>
         </div>
       </section>
 
-      <div v-if="phase === 'scanned' && groups.length === 0" class="empty-result">
+      <div
+        v-if="phase === 'scanned' && groups.length === 0"
+        class="px-3 py-6 text-center text-[11px] text-dp-tertiary"
+      >
         {{ t("toolbox.tools.cleanup.empty") }}
       </div>
     </el-scrollbar>
 
-    <div class="action-bar">
-      <p v-if="phase === 'scanned' || phase === 'deleting'" class="delete-warn">
+    <div class="flex shrink-0 flex-col gap-1.5 border-t border-dp-divider px-px pb-0.5 pt-[7px]">
+      <p v-if="phase === 'scanned' || phase === 'deleting'" class="m-0 text-[10px] leading-[1.4] text-dp-tertiary">
         {{ t("toolbox.tools.cleanup.deleteWarn") }}
       </p>
-      <div class="actions">
+      <div class="flex gap-2 [&_.el-button]:ml-0">
         <el-button
           v-if="phase === 'idle'"
           type="primary"
@@ -484,7 +678,7 @@ onBeforeUnmount(() => {
           <el-button
             type="primary"
             class="flex-1"
-            :disabled="candidates.length === 0"
+            :disabled="candidates.length === 0 || selectedIds.size === 0"
             @click="startClean"
           >
             {{ t("toolbox.tools.cleanup.clean") }}
@@ -498,353 +692,3 @@ onBeforeUnmount(() => {
   </div>
 </template>
 
-<style scoped>
-.cleanup-tool {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
-}
-
-.intro-hint {
-  margin: 2px 2px 8px;
-  font-size: 10.5px;
-  line-height: 1.5;
-  color: var(--dp-text-tertiary);
-}
-
-.setting-card {
-  padding: 9px 10px;
-  margin-bottom: 8px;
-  border: 1px solid var(--dp-card-border);
-  border-radius: 10px;
-  background: var(--dp-card-bg);
-}
-
-.card-label {
-  margin-bottom: 6px;
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.03em;
-  color: var(--dp-text-tertiary);
-}
-
-.root-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
-.root-icon {
-  flex-shrink: 0;
-  color: var(--dp-accent);
-}
-
-.root-path {
-  flex: 1;
-  min-width: 0;
-  font-size: 11.5px;
-  color: var(--dp-text-secondary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.root-path.empty {
-  color: var(--dp-text-tertiary);
-}
-
-.target-list {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.target-check {
-  height: auto;
-  margin-right: 0;
-  padding: 2px 0;
-  align-items: flex-start;
-}
-
-.target-check :deep(.el-checkbox__input) {
-  margin-top: 2px;
-}
-
-.target-check :deep(.el-checkbox__label) {
-  padding-left: 8px;
-}
-
-.target-text {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.35;
-}
-
-.target-name {
-  font-size: 12px;
-  color: var(--dp-text-secondary);
-}
-
-.target-hint {
-  font-size: 10px;
-  color: var(--dp-text-tertiary);
-}
-
-.age-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px dashed var(--dp-divider);
-}
-
-.age-label {
-  font-size: 11px;
-  color: var(--dp-text-muted);
-}
-
-.age-select {
-  width: 128px;
-  margin-left: auto;
-}
-
-.age-hint {
-  margin-top: 6px;
-  font-size: 10px;
-  line-height: 1.45;
-  color: var(--dp-text-tertiary);
-}
-
-.status-card {
-  border-color: color-mix(in srgb, var(--dp-accent) 35%, var(--dp-card-border));
-}
-
-.status-head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.status-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--dp-accent);
-}
-
-.status-dot.scanned,
-.status-dot.done {
-  background: #67c23a;
-}
-
-.status-dot.deleting {
-  background: #e6a23c;
-}
-
-.status-dot.partial {
-  background: #e6a23c;
-}
-
-.status-title {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--dp-text-secondary);
-}
-
-.status-spin {
-  color: var(--dp-accent);
-}
-
-.status-size {
-  margin-left: auto;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--dp-accent);
-}
-
-.status-metrics {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 10px;
-  margin-top: 5px;
-  font-size: 10.5px;
-  color: var(--dp-text-muted);
-}
-
-.current-path {
-  margin-top: 5px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 10px;
-  color: var(--dp-text-tertiary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.progress-track {
-  height: 3px;
-  margin-top: 8px;
-  border-radius: 99px;
-  background: var(--dp-btn-bg);
-  overflow: hidden;
-}
-
-.progress-bar {
-  display: block;
-  width: 32%;
-  height: 100%;
-  border-radius: 99px;
-  background: linear-gradient(90deg, var(--dp-accent), var(--dp-accent-deep, #2f7de1));
-  animation: cleanup-slide 1.1s ease-in-out infinite;
-}
-
-@keyframes cleanup-slide {
-  from {
-    transform: translateX(-110%);
-  }
-  to {
-    transform: translateX(340%);
-  }
-}
-
-.warn-line {
-  margin-top: 5px;
-  font-size: 10px;
-  line-height: 1.45;
-  color: #e6a23c;
-}
-
-.results {
-  margin-top: 2px;
-}
-
-.results-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 2px 2px 6px;
-}
-
-.results-head .card-label {
-  margin-bottom: 0;
-}
-
-.results-total {
-  margin-left: auto;
-  font-size: 10.5px;
-  color: var(--dp-text-tertiary);
-}
-
-.result-group {
-  margin-bottom: 8px;
-  border: 1px solid var(--dp-card-border);
-  border-radius: 10px;
-  background: var(--dp-card-bg);
-  overflow: hidden;
-}
-
-.group-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 6px 10px;
-  background: var(--dp-btn-bg);
-  font-size: 10.5px;
-  font-weight: 600;
-  color: var(--dp-text-secondary);
-}
-
-.result-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 10px;
-  border-top: 1px solid var(--dp-divider);
-}
-
-.result-row.removed .row-path {
-  color: var(--dp-text-tertiary);
-  text-decoration: line-through;
-  opacity: 0.6;
-}
-
-.result-row.failed .row-path {
-  color: #f56c6c;
-}
-
-.row-path {
-  flex: 1;
-  min-width: 0;
-  font-size: 10px;
-  line-height: 1.4;
-  color: var(--dp-text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.row-spin {
-  flex-shrink: 0;
-  color: var(--dp-accent);
-}
-
-.row-size {
-  flex-shrink: 0;
-  font-size: 10px;
-  color: var(--dp-text-tertiary);
-}
-
-.more {
-  padding: 5px 10px;
-  border-top: 1px solid var(--dp-divider);
-  font-size: 10px;
-  color: var(--dp-text-tertiary);
-}
-
-.empty-result {
-  padding: 24px 12px;
-  text-align: center;
-  font-size: 11px;
-  color: var(--dp-text-tertiary);
-}
-
-.action-bar {
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 7px 1px 2px;
-  border-top: 1px solid var(--dp-divider);
-}
-
-.delete-warn {
-  margin: 0;
-  font-size: 10px;
-  line-height: 1.4;
-  color: var(--dp-text-tertiary);
-}
-
-.actions {
-  display: flex;
-  gap: 8px;
-}
-
-.actions .el-button {
-  margin-left: 0;
-}
-
-.flex-1 {
-  flex: 1;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .progress-bar {
-    animation: none;
-    width: 100%;
-    opacity: 0.5;
-  }
-}
-</style>

@@ -168,17 +168,29 @@ async function copyResult() {
 </script>
 
 <template>
-  <div class="qr-tool">
-    <div class="mode-row">
-      <div class="mode-switch">
+  <div class="view-root">
+    <div class="flex mb-2.5">
+      <div class="flex gap-1">
         <button
-          class="switch-btn"
-          :class="{ active: mode === 'generate' }"
+          class="text-xs px-3 py-1 rounded-full cursor-pointer transition-all duration-150 ease-[ease]"
+          :class="
+            mode === 'generate'
+              ? 'border-dp-accent bg-dp-accent text-white'
+              : 'border-dp-card-border bg-dp-card-bg text-dp-muted'
+          "
           @click="mode = 'generate'"
         >
           {{ t("toolbox.tools.qr.generate") }}
         </button>
-        <button class="switch-btn" :class="{ active: mode === 'parse' }" @click="mode = 'parse'">
+        <button
+          class="text-xs px-3 py-1 rounded-full cursor-pointer transition-all duration-150 ease-[ease]"
+          :class="
+            mode === 'parse'
+              ? 'border-dp-accent bg-dp-accent text-white'
+              : 'border-dp-card-border bg-dp-card-bg text-dp-muted'
+          "
+          @click="mode = 'parse'"
+        >
           {{ t("toolbox.tools.qr.parse") }}
         </button>
       </div>
@@ -192,20 +204,20 @@ async function copyResult() {
         :placeholder="t('toolbox.tools.qr.inputPh')"
         maxlength="500"
       />
-      <div class="size-row">
-        <span class="size-label">{{ t("toolbox.tools.qr.size") }}</span>
+      <div class="flex items-center gap-2 mt-2.5">
+        <span class="text-xs text-dp-muted">{{ t("toolbox.tools.qr.size") }}</span>
         <el-radio-group v-model="qrSize" size="small">
           <el-radio-button :value="180">180</el-radio-button>
           <el-radio-button :value="240">240</el-radio-button>
           <el-radio-button :value="320">320</el-radio-button>
         </el-radio-group>
-        <el-button class="gen-btn" type="primary" size="small" @click="generate">
+        <el-button class="ml-auto" type="primary" size="small" @click="generate">
           {{ t("toolbox.tools.qr.generateBtn") }}
         </el-button>
       </div>
-      <div v-show="generated" class="qr-preview">
-        <canvas ref="canvasRef" class="qr-canvas" />
-        <div class="qr-actions">
+      <div v-show="generated" class="flex flex-col items-center gap-3 mt-3.5">
+        <canvas ref="canvasRef" class="rounded-lg shadow-[0_4px_16px_rgba(31,41,55,0.12)]" />
+        <div class="flex gap-2">
           <el-button size="small" :icon="CopyDocument" @click="copyImage">
             {{ t("toolbox.tools.qr.copyImage") }}
           </el-button>
@@ -217,7 +229,7 @@ async function copyResult() {
     </el-scrollbar>
 
     <el-scrollbar v-else class="view-scroll">
-      <div class="parse-actions">
+      <div class="flex gap-2 mt-1">
         <el-button size="small" type="primary" :icon="Picture" @click="pasteFromClipboard">
           {{ t("toolbox.tools.qr.paste") }}
         </el-button>
@@ -228,16 +240,21 @@ async function copyResult() {
           ref="fileInputRef"
           type="file"
           accept="image/*"
-          class="hidden-input"
+          class="hidden"
           @change="onFileChange"
         />
       </div>
-      <div v-show="parseLoaded" class="parse-preview">
-        <canvas ref="previewCanvasRef" class="preview-canvas" />
+      <div v-show="parseLoaded" class="flex justify-center mt-3.5">
+        <canvas
+          ref="previewCanvasRef"
+          class="max-w-[140px] max-h-[140px] rounded-lg shadow-[0_4px_16px_rgba(31,41,55,0.12)]"
+        />
       </div>
-      <div v-if="parseResult" class="parse-result">
-        <div class="result-label">{{ t("toolbox.tools.qr.result") }}</div>
-        <div class="result-text">{{ parseResult }}</div>
+      <div v-if="parseResult" class="mt-3.5 p-2.5 bg-dp-card-bg border border-dp-card-border rounded-[10px]">
+        <div class="text-[11px] text-dp-tertiary mb-1.5">{{ t("toolbox.tools.qr.result") }}</div>
+        <div class="text-[13px] text-dp-primary leading-[1.5] [word-break:break-all] whitespace-pre-wrap mb-2">
+          {{ parseResult }}
+        </div>
         <el-button size="small" text type="primary" :icon="DocumentChecked" @click="copyResult">
           {{ t("toolbox.tools.qr.copyText") }}
         </el-button>
@@ -247,118 +264,3 @@ async function copyResult() {
   </div>
 </template>
 
-<style scoped>
-.qr-tool {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
-}
-
-.mode-row {
-  display: flex;
-  margin-bottom: 10px;
-}
-
-.mode-switch {
-  display: flex;
-  gap: 4px;
-}
-
-.switch-btn {
-  border: 1px solid var(--dp-card-border);
-  background: var(--dp-card-bg);
-  color: var(--dp-text-muted);
-  font-size: 12px;
-  padding: 4px 12px;
-  border-radius: 999px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.switch-btn.active {
-  background: var(--dp-accent);
-  border-color: var(--dp-accent);
-  color: #ffffff;
-}
-
-.size-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.size-label {
-  font-size: 12px;
-  color: var(--dp-text-muted);
-}
-
-.gen-btn {
-  margin-left: auto;
-}
-
-.qr-preview {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  margin-top: 14px;
-}
-
-.qr-canvas {
-  border-radius: 8px;
-  box-shadow: 0 4px 16px rgba(31, 41, 55, 0.12);
-}
-
-.qr-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.parse-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 4px;
-}
-
-.hidden-input {
-  display: none;
-}
-
-.parse-preview {
-  display: flex;
-  justify-content: center;
-  margin-top: 14px;
-}
-
-.preview-canvas {
-  max-width: 140px;
-  max-height: 140px;
-  border-radius: 8px;
-  box-shadow: 0 4px 16px rgba(31, 41, 55, 0.12);
-}
-
-.parse-result {
-  margin-top: 14px;
-  padding: 10px;
-  background: var(--dp-card-bg);
-  border: 1px solid var(--dp-card-border);
-  border-radius: 10px;
-}
-
-.result-label {
-  font-size: 11px;
-  color: var(--dp-text-tertiary);
-  margin-bottom: 6px;
-}
-
-.result-text {
-  font-size: 13px;
-  color: var(--dp-text-primary);
-  line-height: 1.5;
-  word-break: break-all;
-  white-space: pre-wrap;
-  margin-bottom: 8px;
-}
-</style>

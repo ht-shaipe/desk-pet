@@ -59,19 +59,27 @@ async function copyResult() {
 </script>
 
 <template>
-  <div class="base64-tool">
-    <div class="mode-row">
-      <div class="mode-switch">
+  <div class="view-root">
+    <div class="flex mb-2.5">
+      <div class="flex gap-1">
         <button
-          class="switch-btn"
-          :class="{ active: mode === 'encode' }"
+          class="text-xs px-3 py-1 rounded-full cursor-pointer transition-all duration-150 ease-[ease]"
+          :class="
+            mode === 'encode'
+              ? 'border-dp-accent bg-dp-accent text-white'
+              : 'border-dp-card-border bg-dp-card-bg text-dp-muted'
+          "
           @click="mode = 'encode'"
         >
           {{ t("toolbox.tools.base64.encode") }}
         </button>
         <button
-          class="switch-btn"
-          :class="{ active: mode === 'decode' }"
+          class="text-xs px-3 py-1 rounded-full cursor-pointer transition-all duration-150 ease-[ease]"
+          :class="
+            mode === 'decode'
+              ? 'border-dp-accent bg-dp-accent text-white'
+              : 'border-dp-card-border bg-dp-card-bg text-dp-muted'
+          "
           @click="mode = 'decode'"
         >
           {{ t("toolbox.tools.base64.decode") }}
@@ -86,7 +94,7 @@ async function copyResult() {
         :rows="4"
         :placeholder="t('toolbox.tools.base64.inputPh')"
       />
-      <div class="action-row">
+      <div class="flex gap-2 mt-2.5">
         <el-button type="primary" size="small" @click="convert">
           {{ mode === "encode" ? t("toolbox.tools.base64.encode") : t("toolbox.tools.base64.decode") }}
         </el-button>
@@ -100,9 +108,9 @@ async function copyResult() {
         :rows="4"
         readonly
         :placeholder="t('toolbox.tools.base64.outputPh')"
-        class="output-area"
+        class="mt-2.5"
       />
-      <div v-if="output" class="result-actions">
+      <div v-if="output" class="flex justify-end mt-1.5">
         <el-button size="small" text type="primary" :icon="DocumentCopy" @click="copyResult">
           {{ t("toolbox.tools.base64.copyResult") }}
         </el-button>
@@ -111,54 +119,3 @@ async function copyResult() {
   </div>
 </template>
 
-<style scoped>
-.base64-tool {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
-}
-
-.mode-row {
-  display: flex;
-  margin-bottom: 10px;
-}
-
-.mode-switch {
-  display: flex;
-  gap: 4px;
-}
-
-.switch-btn {
-  border: 1px solid var(--dp-card-border);
-  background: var(--dp-card-bg);
-  color: var(--dp-text-muted);
-  font-size: 12px;
-  padding: 4px 12px;
-  border-radius: 999px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.switch-btn.active {
-  background: var(--dp-accent);
-  border-color: var(--dp-accent);
-  color: #ffffff;
-}
-
-.action-row {
-  display: flex;
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.output-area {
-  margin-top: 10px;
-}
-
-.result-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 6px;
-}
-</style>

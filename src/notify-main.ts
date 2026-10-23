@@ -2,7 +2,6 @@ import { listen } from "@tauri-apps/api/event";
 import { currentMonitor, getCurrentWindow } from "@tauri-apps/api/window";
 import { PhysicalPosition, PhysicalSize } from "@tauri-apps/api/dpi";
 import { i18n } from "@/i18n";
-import "virtual:uno.css";
 
 /** 番茄钟完成提醒浮层：接收主窗口事件，屏幕上方显示大字，点击/按 Esc 关闭。 */
 

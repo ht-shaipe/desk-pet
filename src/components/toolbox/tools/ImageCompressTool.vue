@@ -180,8 +180,8 @@ async function saveResult() {
 </script>
 
 <template>
-  <div class="imgcompress-tool">
-    <div class="source-actions">
+  <div class="view-root">
+    <div class="flex gap-2 mb-2.5">
       <el-button size="small" type="primary" :icon="Picture" @click="pasteFromClipboard">
         {{ t("toolbox.tools.imgcompress.paste") }}
       </el-button>
@@ -192,53 +192,60 @@ async function saveResult() {
         ref="fileInputRef"
         type="file"
         accept="image/*"
-        class="hidden-input"
+        class="hidden"
         @change="onFileChange"
       />
     </div>
 
     <el-scrollbar class="view-scroll">
       <template v-if="loaded">
-        <div class="param-block">
-          <div class="param-row">
-            <span class="param-label">{{ t("toolbox.tools.imgcompress.quality") }}</span>
-            <el-slider v-model="quality" :min="0.1" :max="0.95" :step="0.05" class="param-slider" />
-            <span class="param-value">{{ Math.round(quality * 100) }}%</span>
+        <div class="p-2.5 bg-dp-card-bg border border-dp-card-border rounded-[10px] mb-3">
+          <div class="flex items-center gap-2.5">
+            <span class="text-xs text-dp-muted shrink-0">{{ t("toolbox.tools.imgcompress.quality") }}</span>
+            <el-slider v-model="quality" :min="0.1" :max="0.95" :step="0.05" class="flex-1 min-w-0" />
+            <span class="text-xs text-dp-accent shrink-0 min-w-[34px] text-right">{{ Math.round(quality * 100) }}%</span>
           </div>
-          <div class="param-row">
-            <span class="param-label">{{ t("toolbox.tools.imgcompress.maxDim") }}</span>
+          <div class="flex items-center gap-2.5 mt-2.5">
+            <span class="text-xs text-dp-muted shrink-0">{{ t("toolbox.tools.imgcompress.maxDim") }}</span>
             <el-radio-group v-model="maxDim" size="small">
               <el-radio-button :value="0">{{ t("toolbox.tools.imgcompress.noLimit") }}</el-radio-button>
               <el-radio-button :value="1920">1920</el-radio-button>
               <el-radio-button :value="1280">1280</el-radio-button>
               <el-radio-button :value="720">720</el-radio-button>
             </el-radio-group>
-            <el-button size="small" type="primary" class="compress-btn" @click="compress">
+            <el-button size="small" type="primary" class="ml-auto" @click="compress">
               {{ t("toolbox.tools.imgcompress.compressBtn") }}
             </el-button>
           </div>
         </div>
 
-        <div v-if="resultUrl" class="result-block">
-          <img :src="resultUrl" class="result-img" alt="compressed" />
-          <div class="size-compare">
-            <div class="size-line">
-              <span class="size-label">{{ t("toolbox.tools.imgcompress.original") }}</span>
-              <span class="size-value">
+        <div v-if="resultUrl" class="flex flex-col items-center">
+          <img
+            :src="resultUrl"
+            class="max-w-full max-h-[150px] rounded-lg shadow-[0_4px_16px_rgba(31,41,55,0.12)]"
+            alt="compressed"
+          />
+          <div class="w-full mt-3 px-2.5 py-2 bg-dp-card-bg border border-dp-card-border rounded-[10px]">
+            <div class="flex justify-between text-xs leading-[1.8]">
+              <span class="text-dp-tertiary">{{ t("toolbox.tools.imgcompress.original") }}</span>
+              <span class="text-dp-muted">
                 {{ origWidth }}×{{ origHeight }} · {{ kb(origPngBytes) }}
               </span>
             </div>
-            <div class="size-line">
-              <span class="size-label">{{ t("toolbox.tools.imgcompress.compressed") }}</span>
-              <span class="size-value accent">
+            <div class="flex justify-between text-xs leading-[1.8]">
+              <span class="text-dp-tertiary">{{ t("toolbox.tools.imgcompress.compressed") }}</span>
+              <span class="text-dp-accent font-medium">
                 {{ resultWidth }}×{{ resultHeight }} · {{ kb(resultBytes) }}
               </span>
             </div>
-            <div v-if="savedPercent > 0" class="saved-tip">
+            <div
+              v-if="savedPercent > 0"
+              class="mt-1 text-[11px] text-[var(--el-color-success,#67c23a)] text-center"
+            >
               {{ t("toolbox.tools.imgcompress.saved", { n: savedPercent }) }}
             </div>
           </div>
-          <div class="result-actions">
+          <div class="flex gap-2 mt-2.5">
             <el-button size="small" :icon="CopyDocument" @click="copyResult">
               {{ t("toolbox.tools.imgcompress.copyImage") }}
             </el-button>
@@ -257,117 +264,3 @@ async function saveResult() {
   </div>
 </template>
 
-<style scoped>
-.imgcompress-tool {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
-}
-
-.source-actions {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-
-.hidden-input {
-  display: none;
-}
-
-.param-block {
-  padding: 10px;
-  background: var(--dp-card-bg);
-  border: 1px solid var(--dp-card-border);
-  border-radius: 10px;
-  margin-bottom: 12px;
-}
-
-.param-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.param-row + .param-row {
-  margin-top: 10px;
-}
-
-.param-label {
-  font-size: 12px;
-  color: var(--dp-text-muted);
-  flex-shrink: 0;
-}
-
-.param-slider {
-  flex: 1;
-  min-width: 0;
-}
-
-.param-value {
-  font-size: 12px;
-  color: var(--dp-accent);
-  flex-shrink: 0;
-  min-width: 34px;
-  text-align: right;
-}
-
-.compress-btn {
-  margin-left: auto;
-}
-
-.result-block {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.result-img {
-  max-width: 100%;
-  max-height: 150px;
-  border-radius: 8px;
-  box-shadow: 0 4px 16px rgba(31, 41, 55, 0.12);
-}
-
-.size-compare {
-  width: 100%;
-  margin-top: 12px;
-  padding: 8px 10px;
-  background: var(--dp-card-bg);
-  border: 1px solid var(--dp-card-border);
-  border-radius: 10px;
-}
-
-.size-line {
-  display: flex;
-  justify-content: space-between;
-  font-size: 12px;
-  line-height: 1.8;
-}
-
-.size-label {
-  color: var(--dp-text-tertiary);
-}
-
-.size-value {
-  color: var(--dp-text-muted);
-}
-
-.size-value.accent {
-  color: var(--dp-accent);
-  font-weight: 500;
-}
-
-.saved-tip {
-  margin-top: 4px;
-  font-size: 11px;
-  color: var(--el-color-success, #67c23a);
-  text-align: center;
-}
-
-.result-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 10px;
-}
-</style>

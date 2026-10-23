@@ -63,19 +63,27 @@ async function copyResult() {
 </script>
 
 <template>
-  <div class="des-tool">
-    <div class="mode-row">
-      <div class="mode-switch">
+  <div class="view-root">
+    <div class="flex mb-2.5">
+      <div class="flex gap-1">
         <button
-          class="switch-btn"
-          :class="{ active: mode === 'encrypt' }"
+          class="text-xs px-3 py-1 rounded-full cursor-pointer transition-all duration-150 ease-[ease]"
+          :class="
+            mode === 'encrypt'
+              ? 'border-dp-accent bg-dp-accent text-white'
+              : 'border-dp-card-border bg-dp-card-bg text-dp-muted'
+          "
           @click="mode = 'encrypt'"
         >
           {{ t("toolbox.tools.des.encrypt") }}
         </button>
         <button
-          class="switch-btn"
-          :class="{ active: mode === 'decrypt' }"
+          class="text-xs px-3 py-1 rounded-full cursor-pointer transition-all duration-150 ease-[ease]"
+          :class="
+            mode === 'decrypt'
+              ? 'border-dp-accent bg-dp-accent text-white'
+              : 'border-dp-card-border bg-dp-card-bg text-dp-muted'
+          "
           @click="mode = 'decrypt'"
         >
           {{ t("toolbox.tools.des.decrypt") }}
@@ -89,7 +97,7 @@ async function copyResult() {
         :placeholder="t('toolbox.tools.des.keyPh')"
         maxlength="32"
         clearable
-        class="key-input"
+        class="mb-2.5"
       >
         <template #prefix>
           <el-icon><Lock /></el-icon>
@@ -100,9 +108,9 @@ async function copyResult() {
         type="textarea"
         :rows="4"
         :placeholder="mode === 'encrypt' ? t('toolbox.tools.des.plainPh') : t('toolbox.tools.des.cipherPh')"
-        class="text-input"
+        class="mb-2.5"
       />
-      <div class="action-row">
+      <div class="flex gap-2 mb-2.5">
         <el-button type="primary" size="small" @click="convert">
           {{ mode === "encrypt" ? t("toolbox.tools.des.encrypt") : t("toolbox.tools.des.decrypt") }}
         </el-button>
@@ -114,7 +122,7 @@ async function copyResult() {
         readonly
         :placeholder="t('toolbox.tools.des.outputPh')"
       />
-      <div v-if="output" class="result-actions">
+      <div v-if="output" class="flex justify-end mt-1.5">
         <el-button size="small" text type="primary" :icon="DocumentCopy" @click="copyResult">
           {{ t("toolbox.tools.des.copyResult") }}
         </el-button>
@@ -123,58 +131,3 @@ async function copyResult() {
   </div>
 </template>
 
-<style scoped>
-.des-tool {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
-}
-
-.mode-row {
-  display: flex;
-  margin-bottom: 10px;
-}
-
-.mode-switch {
-  display: flex;
-  gap: 4px;
-}
-
-.switch-btn {
-  border: 1px solid var(--dp-card-border);
-  background: var(--dp-card-bg);
-  color: var(--dp-text-muted);
-  font-size: 12px;
-  padding: 4px 12px;
-  border-radius: 999px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.switch-btn.active {
-  background: var(--dp-accent);
-  border-color: var(--dp-accent);
-  color: #ffffff;
-}
-
-.key-input {
-  margin-bottom: 10px;
-}
-
-.text-input {
-  margin-bottom: 10px;
-}
-
-.action-row {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-
-.result-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 6px;
-}
-</style>

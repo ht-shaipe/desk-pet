@@ -137,7 +137,10 @@ impl TargetKind {
 }
 
 struct ScanResult {
+    /// 规范后的真实根路径，删除时做安全校验
     root: PathBuf,
+    /// 用户输入的根路径前缀，仅用于展示（如 /tmp 对应 /private/tmp）
+    display_root: PathBuf,
     candidates: Vec<CleanupCandidate>,
 }
 
@@ -247,7 +250,8 @@ pub async fn disk_cleanup_scan(
     targets: Vec<String>,
     log_days: u32,
 ) -> Result<CleanupStream, String> {
-    let root = PathBuf::from(root)
+    let display_root = PathBuf::from(root.trim());
+    let root = display_root
         .canonicalize()
         .map_err(|e| format!("无法访问目录: {e}"))?;
     if !root.is_dir() {
@@ -278,7 +282,7 @@ pub async fn disk_cleanup_scan(
     let log_days = log_days.min(3650);
 
     tauri::async_runtime::spawn_blocking(move || {
-        if let Some(outcome) = run_scan(&root, &kinds, log_days, &tx, &cancel) {
+        if let Some(outcome) = run_scan(&root, &display_root, &kinds, log_days, &tx, &cancel) {
             let count = outcome.result.candidates.len();
             // 先落库再通知完成，避免前端收到 scanDone 后立刻删除时取不到结果
             scans
@@ -298,8 +302,12 @@ pub async fn disk_cleanup_scan(
 }
 
 /// 启动删除任务，返回新的 SSE 地址。
+/// `ids` 为前端勾选的候选项 id；缺省或为空时删除全部扫描结果。
 #[tauri::command]
-pub async fn disk_cleanup_delete(scan_job_id: String) -> Result<CleanupStream, String> {
+pub async fn disk_cleanup_delete(
+    scan_job_id: String,
+    ids: Option<Vec<String>>,
+) -> Result<CleanupStream, String> {
     let svc = service().await?;
     let scan = svc
         .scans
@@ -308,6 +316,27 @@ pub async fn disk_cleanup_delete(scan_job_id: String) -> Result<CleanupStream, S
         .get(&scan_job_id)
         .cloned()
         .ok_or_else(|| "扫描结果已失效，请重新扫描".to_string())?;
+
+    let scan = match ids {
+        Some(ids) if !ids.is_empty() => {
+            let selected: HashSet<String> = ids.into_iter().collect();
+            let candidates = scan
+                .candidates
+                .iter()
+                .filter(|item| selected.contains(&item.id))
+                .cloned()
+                .collect::<Vec<_>>();
+            if candidates.is_empty() {
+                return Err("所选删除项已失效，请重新扫描".to_string());
+            }
+            Arc::new(ScanResult {
+                root: scan.root.clone(),
+                display_root: scan.display_root.clone(),
+                candidates,
+            })
+        }
+        _ => scan,
+    };
 
     let (job_id, tx, cancel) = svc.create_job();
     let url = format!(
@@ -336,8 +365,10 @@ pub async fn disk_cleanup_cancel(job_id: String) -> Result<(), String> {
 }
 
 /// 扫描文件系统；返回 `None` 表示任务被取消（已发送 Cancelled 事件）。
+/// `root` 为规范化后的真实路径，`display_root` 为用户输入的展示路径。
 fn run_scan(
     root: &Path,
+    display_root: &Path,
     kinds: &HashSet<TargetKind>,
     log_days: u32,
     tx: &mpsc::UnboundedSender<CleanupEvent>,
@@ -346,7 +377,7 @@ fn run_scan(
     if tx
         .send(CleanupEvent::Started {
             mode: "scan",
-            root: root.to_string_lossy().to_string(),
+            root: display_root.to_string_lossy().to_string(),
         })
         .is_err()
     {
@@ -416,7 +447,7 @@ fn run_scan(
                             files,
                             bytes,
                             errors,
-                            current: path.to_string_lossy().to_string(),
+                            current: to_display(&path, root, display_root).to_string_lossy().to_string(),
                         });
                         let Some(size) = dir_size(&path, cancel) else {
                             let _ = tx.send(CleanupEvent::Cancelled { mode: "scan" });
@@ -428,6 +459,8 @@ fn run_scan(
                             &mut seq,
                             TargetKind::Target,
                             &path,
+                            root,
+                            display_root,
                             size,
                         ) {
                             bytes = bytes.saturating_add(size);
@@ -447,7 +480,7 @@ fn run_scan(
                             files,
                             bytes,
                             errors,
-                            current: path.to_string_lossy().to_string(),
+                            current: to_display(&path, root, display_root).to_string_lossy().to_string(),
                         });
                         let Some(size) = dir_size(&path, cancel) else {
                             let _ = tx.send(CleanupEvent::Cancelled { mode: "scan" });
@@ -459,6 +492,8 @@ fn run_scan(
                             &mut seq,
                             TargetKind::NodeModules,
                             &path,
+                            root,
+                            display_root,
                             size,
                         ) {
                             bytes = bytes.saturating_add(size);
@@ -484,6 +519,8 @@ fn run_scan(
                                 &mut seq,
                                 TargetKind::Logs,
                                 &path,
+                                root,
+                                display_root,
                                 size,
                             ) {
                                 bytes = bytes.saturating_add(size);
@@ -501,7 +538,7 @@ fn run_scan(
                             files,
                             bytes,
                             errors,
-                            current: path.to_string_lossy().to_string(),
+                            current: to_display(&path, root, display_root).to_string_lossy().to_string(),
                         })
                         .is_err()
                 {
@@ -528,12 +565,13 @@ fn run_scan(
         files,
         bytes,
         errors,
-        current: root.to_string_lossy().to_string(),
+        current: display_root.to_string_lossy().to_string(),
     });
 
     Some(ScanOutcome {
         result: ScanResult {
             root: root.to_path_buf(),
+            display_root: display_root.to_path_buf(),
             candidates,
         },
         bytes,
@@ -550,7 +588,7 @@ fn run_delete(
     if tx
         .send(CleanupEvent::Started {
             mode: "delete",
-            root: scan.root.to_string_lossy().to_string(),
+            root: scan.display_root.to_string_lossy().to_string(),
         })
         .is_err()
     {
@@ -566,8 +604,12 @@ fn run_delete(
             let _ = tx.send(CleanupEvent::Cancelled { mode: "delete" });
             return false;
         }
+        // 候选路径可能带展示前缀（如 /tmp），先还原为规范路径再做越界校验
         let path = PathBuf::from(&candidate.path);
-        if path.as_path() == scan.root.as_path() || !path.starts_with(&scan.root) {
+        let real_path = to_canonical(&path, &scan.root, &scan.display_root)
+            .canonicalize()
+            .unwrap_or_else(|_| path.clone());
+        if real_path.as_path() == scan.root.as_path() || !real_path.starts_with(&scan.root) {
             failed += 1;
             let _ = tx.send(CleanupEvent::Deleted {
                 id: candidate.id.clone(),
@@ -577,7 +619,6 @@ fn run_delete(
             });
             continue;
         }
-
         let _ = tx.send(CleanupEvent::Deleting {
             id: candidate.id.clone(),
             kind: candidate.kind.clone(),
@@ -586,9 +627,9 @@ fn run_delete(
         });
 
         let result = if candidate.kind == TargetKind::Logs.as_str() {
-            fs::remove_file(&path)
+            fs::remove_file(&real_path)
         } else {
-            fs::remove_dir_all(&path)
+            fs::remove_dir_all(&real_path)
         };
         match result {
             Ok(()) => {
@@ -640,10 +681,13 @@ fn push_candidate(
     seq: &mut usize,
     kind: TargetKind,
     path: &Path,
+    root: &Path,
+    display_root: &Path,
     bytes: u64,
 ) -> bool {
     // 非 UTF-8 路径无法无损传回前端，直接跳过，避免删除时误伤
-    let Some(path) = path.to_str() else {
+    let display = to_display(path, root, display_root);
+    let Some(path) = display.to_str() else {
         return false;
     };
     *seq += 1;
@@ -656,6 +700,23 @@ fn push_candidate(
     candidates.push(candidate.clone());
     batch.push(candidate);
     true
+}
+
+/// 把规范路径前缀替换回用户输入的展示路径（如 /private/tmp → /tmp）。
+fn to_display<'a>(path: &'a Path, root: &Path, display_root: &Path) -> std::borrow::Cow<'a, Path> {
+    match path.strip_prefix(root) {
+        Ok(rest) => display_root.join(rest),
+        Err(_) => return path.to_path_buf().into(),
+    }
+    .into()
+}
+
+/// 把展示路径前缀还原为规范路径（如 /tmp → /private/tmp）。
+fn to_canonical(path: &Path, root: &Path, display_root: &Path) -> PathBuf {
+    match path.strip_prefix(display_root) {
+        Ok(rest) => root.join(rest),
+        Err(_) => path.to_path_buf(),
+    }
 }
 
 fn flush_found(
@@ -746,8 +807,10 @@ mod tests {
             TargetKind::Target,
             TargetKind::NodeModules,
         ]);
+        // macOS 上 tempdir 的 /var 前缀本身是符号链接，统一用规范路径避免误判越界
+        let root = &root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
         let (tx, _rx) = mpsc::unbounded_channel();
-        run_scan(root, &kinds, 0, &tx, &AtomicBool::new(false)).expect("扫描应完成")
+        run_scan(root, root, &kinds, 0, &tx, &AtomicBool::new(false)).expect("扫描应完成")
     }
 
     fn fixture() -> tempfile::TempDir {
@@ -833,6 +896,80 @@ mod tests {
         assert!(tmp.path().join("logs/keep.txt").exists());
         assert!(tmp.path().join("assets/target").exists());
         assert!(tmp.path().join("static/node_modules").exists());
+    }
+
+    /// 前端只勾选部分候选时，未勾选项必须保留
+    #[test]
+    fn delete_honors_selected_ids() {
+        let tmp = fixture();
+        let outcome = scan_all(tmp.path());
+        let log = outcome
+            .result
+            .candidates
+            .iter()
+            .find(|item| item.kind == "logs")
+            .unwrap()
+            .id
+            .clone();
+
+        // 按命令层的过滤语义重建子集后删除
+        let selected: HashSet<String> = [log].into_iter().collect();
+        let subset = ScanResult {
+            root: outcome.result.root.clone(),
+            display_root: outcome.result.display_root.clone(),
+            candidates: outcome
+                .result
+                .candidates
+                .iter()
+                .filter(|item| selected.contains(&item.id))
+                .cloned()
+                .collect(),
+        };
+        assert_eq!(subset.candidates.len(), 1);
+        let (tx, _rx) = mpsc::unbounded_channel();
+        assert!(run_delete(Arc::new(subset), &tx, &AtomicBool::new(false)));
+
+        assert!(!tmp.path().join("logs/app.log").exists(), "勾选项应被删除");
+        assert!(tmp.path().join("proj/target").exists(), "未勾选的 target 应保留");
+        assert!(
+            tmp.path().join("web/node_modules").exists(),
+            "未勾选的 node_modules 应保留"
+        );
+    }
+
+    /// 模拟 /tmp → /private/tmp：候选路径应展示用户输入的符号链接前缀，删除时还原为真实路径
+    #[cfg(unix)]
+    #[test]
+    fn symlinked_root_is_displayed_as_input_path() {
+        use std::os::unix::fs::symlink;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let real_root = tmp.path().canonicalize().unwrap();
+        fs::create_dir_all(real_root.join("logs")).unwrap();
+        fs::write(real_root.join("logs/app.log"), "x").unwrap();
+
+        let outer = tempfile::tempdir().unwrap();
+        let link = outer
+            .path()
+            .canonicalize()
+            .unwrap()
+            .join("tmp-link");
+        symlink(&real_root, &link).unwrap();
+
+        let kinds = HashSet::from([TargetKind::Logs]);
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let outcome = run_scan(&real_root, &link, &kinds, 0, &tx, &AtomicBool::new(false))
+            .expect("扫描应完成");
+        let candidate = &outcome.result.candidates[0];
+        assert!(
+            candidate.path.starts_with(&link.to_string_lossy().to_string()),
+            "候选路径应使用用户输入前缀: {}",
+            candidate.path
+        );
+
+        let (tx, _rx) = mpsc::unbounded_channel();
+        assert!(run_delete(Arc::new(outcome.result), &tx, &AtomicBool::new(false)));
+        assert!(!real_root.join("logs/app.log").exists(), "应通过符号链接前缀删除真实文件");
     }
 
     #[test]

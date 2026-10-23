@@ -227,15 +227,15 @@ async function removeModel(model: AiModel) {
 </script>
 
 <template>
-  <div class="chat-view">
+  <div class="view-root">
     <div class="view-toolbar">
       <span class="toolbar-title">{{ t("chat.title") }}</span>
-      <div class="toolbar-actions">
+      <div class="inline-flex items-center gap-1">
         <el-select
           v-if="models.length > 0"
           :model-value="activeId"
           size="small"
-          class="model-select"
+          class="w-[120px]"
           @update:model-value="(v: string) => config.setActiveAiModel(v)"
         >
           <el-option v-for="m in models" :key="m.id" :value="m.id" :label="m.name || m.model" />
@@ -247,12 +247,12 @@ async function removeModel(model: AiModel) {
       </div>
     </div>
 
-    <div class="chat-body">
+    <div class="flex-1 min-h-0 flex flex-col">
       <el-empty
         v-if="models.length === 0"
         :description="t('chat.emptyModels')"
         :image-size="60"
-        class="chat-empty"
+        class="m-auto"
       >
         <el-button type="primary" size="small" :icon="Plus" @click="openAdd(); showModels = true">
           {{ t("chat.addModel") }}
@@ -262,22 +262,32 @@ async function removeModel(model: AiModel) {
         v-else-if="rendered.length === 0"
         :description="t('chat.emptyMessages')"
         :image-size="60"
-        class="chat-empty"
+        class="m-auto"
       />
-      <el-scrollbar v-else ref="listRef" class="view-scroll chat-list">
+      <el-scrollbar v-else ref="listRef" class="view-scroll pr-1">
         <div
           v-for="msg in rendered"
           :key="msg.id"
-          class="msg-row"
-          :class="msg.role === 'user' ? 'mine' : 'theirs'"
+          class="msg-row flex mb-2.5"
+          :class="msg.role === 'user' ? 'justify-end' : 'justify-start'"
         >
-          <div class="msg-bubble" :class="msg.role">
-            <span class="msg-text">{{ msg.content }}</span>
-            <span v-if="pending && msg.id < 0" class="cursor" />
+          <div
+            class="max-w-[82%] px-[11px] py-[7px] rounded-xl text-[13px] leading-[1.55] [word-break:break-word]"
+            :class="
+              msg.role === 'user'
+                ? 'bg-dp-accent text-white rounded-br-[4px]'
+                : 'bg-dp-btn-bg text-dp-primary rounded-bl-[4px]'
+            "
+          >
+            <span class="whitespace-pre-wrap">{{ msg.content }}</span>
+            <span
+              v-if="pending && msg.id < 0"
+              class="inline-block w-[2px] h-3.5 ml-0.5 align-[-2px] bg-dp-accent animate-blink"
+            />
           </div>
           <el-button
             v-if="msg.id > 0"
-            class="msg-del"
+            class="shrink-0 self-center w-5 h-5 min-w-5 p-0 my-0 mx-0.5 opacity-0 transition-opacity duration-150 ease-[ease] [.msg-row:hover_&]:opacity-55 [.msg-row_&]:hover:opacity-100"
             text
             size="small"
             :icon="Delete"
@@ -288,7 +298,9 @@ async function removeModel(model: AiModel) {
       </el-scrollbar>
     </div>
 
-    <div class="chat-input">
+    <div
+      class="relative pt-2 shrink-0 [&_.el-textarea\_\_inner]:pt-[9px] [&_.el-textarea\_\_inner]:pr-[46px] [&_.el-textarea\_\_inner]:pb-[9px] [&_.el-textarea\_\_inner]:pl-3 [&_.el-textarea\_\_inner]:rounded-xl [&_.el-textarea\_\_inner]:leading-[1.55] [&_.el-textarea\_\_inner]:resize-none [&_.el-textarea\_\_inner]:[scrollbar-width:none] [&_.el-textarea\_\_inner::-webkit-scrollbar]:hidden"
+    >
       <el-input
         v-model="input"
         type="textarea"
@@ -299,7 +311,7 @@ async function removeModel(model: AiModel) {
       />
       <el-button
         v-if="streaming"
-        class="send-btn stop"
+        class="absolute right-1.5 bottom-1.5 w-[30px] h-[30px] min-w-[30px] p-0 m-0 [&_.el-icon]:text-[15px]"
         type="danger"
         :icon="VideoPause"
         circle
@@ -307,7 +319,7 @@ async function removeModel(model: AiModel) {
       />
       <el-button
         v-else
-        class="send-btn"
+        class="absolute right-1.5 bottom-1.5 w-[30px] h-[30px] min-w-[30px] p-0 m-0 [&_.el-icon]:text-[15px] disabled:border-transparent disabled:bg-dp-btn-bg disabled:text-dp-tertiary"
         type="primary"
         :icon="Position"
         circle
@@ -320,16 +332,25 @@ async function removeModel(model: AiModel) {
       v-model="showModels"
       :title="editing ? t('chat.editModel') : t('chat.addModel')"
       width="320px"
-      class="model-dialog"
+      class="max-w-[calc(100vw-24px)] [&_.el-dialog\_\_body]:max-h-[calc(100vh-140px)] [&_.el-dialog\_\_body]:overflow-y-auto [&_.el-dialog\_\_body]:pt-2.5"
       append-to-body
     >
-      <el-scrollbar max-height="110px" class="model-list">
-        <div v-for="m in models" :key="m.id" class="model-item">
-          <div class="model-info">
-            <span class="model-name" :class="{ active: m.id === activeId }">{{ m.name || m.model }}</span>
-            <span class="model-meta">{{ m.model }}</span>
+      <el-scrollbar max-height="110px" class="pr-1">
+        <div
+          v-for="m in models"
+          :key="m.id"
+          class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-dp-btn-bg"
+        >
+          <div class="flex flex-col min-w-0 mr-auto">
+            <span
+              class="overflow-hidden text-ellipsis whitespace-nowrap text-[13px]"
+              :class="m.id === activeId ? 'text-dp-accent font-semibold' : 'text-dp-primary'"
+            >{{ m.name || m.model }}</span>
+            <span class="overflow-hidden text-ellipsis whitespace-nowrap text-[11px] text-dp-muted">
+              {{ m.model }}
+            </span>
           </div>
-          <div class="model-ops">
+          <div class="inline-flex items-center shrink-0 [&_.el-button+_.el-button]:ml-0.5">
             <el-button v-if="m.id !== activeId" size="small" text type="primary" @click="config.setActiveAiModel(m.id)">
               {{ t("chat.use") }}
             </el-button>
@@ -339,8 +360,8 @@ async function removeModel(model: AiModel) {
         </div>
         <el-empty v-if="models.length === 0" :description="t('chat.emptyModels')" :image-size="50" />
       </el-scrollbar>
-      <el-divider class="model-divider" />
-      <el-form label-position="left" label-width="76px" class="model-form" @submit.prevent>
+      <el-divider class="my-3" />
+      <el-form label-position="left" label-width="76px" class="[&_.el-form-item]:mb-2.5" @submit.prevent>
         <el-form-item :label="t('chat.modelName')">
           <el-input v-model="form.name" :placeholder="t('chat.modelNamePh')" />
         </el-form-item>
@@ -353,7 +374,7 @@ async function removeModel(model: AiModel) {
         <el-form-item :label="t('chat.modelId')">
           <el-input v-model="form.model" :placeholder="t('chat.modelIdPh')" />
         </el-form-item>
-        <div class="model-form-ops">
+        <div class="flex justify-end gap-2">
           <el-button size="small" @click="openAdd">{{ t("chat.newForm") }}</el-button>
           <el-button size="small" type="primary" @click="saveModel">
             {{ t("common.confirm") }}
@@ -364,241 +385,3 @@ async function removeModel(model: AiModel) {
   </div>
 </template>
 
-<style scoped>
-.chat-view {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
-}
-
-.toolbar-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.model-select {
-  width: 120px;
-}
-
-.chat-body {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.chat-empty {
-  margin: auto;
-}
-
-.chat-list {
-  flex: 1;
-  min-height: 0;
-  padding-right: 4px;
-}
-
-.msg-row {
-  display: flex;
-  margin-bottom: 10px;
-}
-
-.msg-row.mine {
-  justify-content: flex-end;
-}
-
-.msg-row.theirs {
-  justify-content: flex-start;
-}
-
-/* 单条删除按钮：行 hover 时浮现 */
-.msg-del {
-  flex-shrink: 0;
-  align-self: center;
-  width: 20px;
-  height: 20px;
-  min-width: 20px;
-  padding: 0;
-  margin: 0 2px;
-  opacity: 0;
-  transition: opacity 0.15s ease;
-}
-
-.msg-row:hover .msg-del {
-  opacity: 0.55;
-}
-
-.msg-row .msg-del:hover {
-  opacity: 1;
-}
-
-.msg-bubble {
-  max-width: 82%;
-  padding: 7px 11px;
-  border-radius: 12px;
-  font-size: 13px;
-  line-height: 1.55;
-  word-break: break-word;
-}
-
-.msg-bubble.user {
-  background: var(--dp-accent);
-  color: #fff;
-  border-bottom-right-radius: 4px;
-}
-
-.msg-bubble.assistant {
-  background: var(--dp-btn-bg);
-  color: var(--dp-text-primary);
-  border-bottom-left-radius: 4px;
-}
-
-.msg-text {
-  white-space: pre-wrap;
-}
-
-/* 流式输出光标 */
-.cursor {
-  display: inline-block;
-  width: 2px;
-  height: 14px;
-  margin-left: 2px;
-  vertical-align: -2px;
-  background: var(--dp-accent);
-  animation: blink 0.9s step-end infinite;
-}
-
-@keyframes blink {
-  50% {
-    opacity: 0;
-  }
-}
-
-.chat-input {
-  position: relative;
-  padding-top: 8px;
-  flex-shrink: 0;
-}
-
-.chat-input :deep(.el-textarea__inner) {
-  padding: 9px 46px 9px 12px;
-  border-radius: 12px;
-  line-height: 1.55;
-  resize: none;
-  scrollbar-width: none;
-}
-
-.chat-input :deep(.el-textarea__inner)::-webkit-scrollbar {
-  display: none;
-}
-
-/* 发送按钮内嵌在输入框右下角，与输入区视为一个整体 */
-.chat-input .send-btn {
-  position: absolute;
-  right: 6px;
-  bottom: 6px;
-  width: 30px;
-  height: 30px;
-  min-width: 30px;
-  padding: 0;
-  margin: 0;
-}
-
-.chat-input .send-btn :deep(.el-icon) {
-  font-size: 15px;
-}
-
-/* 无内容时弱化为内嵌小圆点，不抢输入框的视觉重心 */
-.chat-input .send-btn.is-disabled {
-  border-color: transparent;
-  background: var(--dp-btn-bg);
-  color: var(--dp-text-tertiary);
-}
-
-/* ---------- 模型管理 ---------- */
-.model-list {
-  padding-right: 4px;
-}
-
-.model-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  border-radius: 8px;
-}
-
-.model-item:hover {
-  background: var(--dp-btn-bg);
-}
-
-.model-info {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  margin-right: auto;
-}
-
-.model-name {
-  font-size: 13px;
-  color: var(--dp-text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.model-name.active {
-  color: var(--dp-accent);
-  font-weight: 600;
-}
-
-.model-meta {
-  font-size: 11px;
-  color: var(--dp-text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.model-ops {
-  display: inline-flex;
-  align-items: center;
-  flex-shrink: 0;
-}
-
-.model-ops .el-button + .el-button {
-  margin-left: 2px;
-}
-
-.model-divider {
-  margin: 12px 0;
-}
-
-.model-form :deep(.el-form-item) {
-  margin-bottom: 10px;
-}
-
-.model-form-ops {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-</style>
-
-<style>
-/* 模型管理弹窗：面板窗口较小，约束弹窗宽高避免出现页面滚动条 */
-.model-dialog {
-  max-width: calc(100vw - 24px);
-}
-
-.model-dialog .el-dialog {
-  max-width: calc(100vw - 24px);
-}
-
-.model-dialog .el-dialog__body {
-  max-height: calc(100vh - 140px);
-  overflow-y: auto;
-  padding-top: 10px;
-}
-</style>
