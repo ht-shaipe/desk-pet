@@ -49,6 +49,7 @@ pub fn run() {
             tauri_cmds::toolbox_cmds::read_image_data_url,
             tauri_cmds::toolbox_cmds::save_compressed_image,
             tauri_cmds::toolbox_cmds::reveal_path,
+            tauri_cmds::toolbox_cmds::http_request,
             tauri_cmds::cleanup_cmds::disk_cleanup_scan,
             tauri_cmds::cleanup_cmds::disk_cleanup_delete,
             tauri_cmds::cleanup_cmds::disk_cleanup_cancel,

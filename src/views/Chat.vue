@@ -5,6 +5,8 @@ import { Delete, Edit, Plus, Position, VideoPause } from "@element-plus/icons-vu
 import { ElMessage, ElMessageBox } from "element-plus";
 import { useConfigStore } from "@/stores/config";
 import { isModelReady, streamChatCompletion } from "@/api/ai";
+import { launchItem } from "@/api/launcher";
+import { renderMarkdown } from "@/lib/md";
 import { getChatMessages, addChatMessage, deleteChatMessage, clearChatMessages } from "@/api/chat";
 import type { AiModel, ChatEntry, ChatMessage } from "@/types";
 
@@ -142,6 +144,27 @@ function onEnterKey(e: KeyboardEvent) {
     return;
   }
   void send();
+}
+
+/** 点击 markdown 内容里的链接：仅放行 http/https/mailto，用系统浏览器打开，不让面板页面跳走。 */
+function onLinkClick(e: MouseEvent) {
+  const anchor = (e.target as HTMLElement | null)?.closest?.("a");
+  if (!(anchor instanceof HTMLAnchorElement)) {
+    return;
+  }
+  e.preventDefault();
+  const href = anchor.getAttribute("href") ?? "";
+  if (!/^(https?:\/\/|mailto:)/i.test(href)) {
+    return;
+  }
+  void launchItem({
+    id: "md-link",
+    name: href,
+    icon: "",
+    item_type: "url",
+    value: href,
+    color: "",
+  }).catch(() => undefined);
 }
 
 /** 删除单条聊天记录。 */
@@ -292,16 +315,19 @@ async function removeModel(model: AiModel) {
         >
           <div
             class="max-w-[82%] px-[11px] py-[7px] rounded-xl text-[13px] leading-[1.55] [word-break:break-word]"
-            :class="
+            :class="[
               msg.role === 'user'
                 ? 'bg-dp-accent text-white rounded-br-[4px]'
-                : 'bg-dp-btn-bg text-dp-primary rounded-bl-[4px]'
-            "
+                : 'bg-dp-btn-bg text-dp-primary rounded-bl-[4px]',
+              msg.role !== 'user' && pending && msg.id < 0 ? 'md-cursor' : '',
+            ]"
+            @click="msg.role === 'user' ? undefined : onLinkClick($event)"
           >
-            <span class="whitespace-pre-wrap">{{ msg.content }}</span>
-            <span
-              v-if="pending && msg.id < 0"
-              class="inline-block w-[2px] h-3.5 ml-0.5 align-[-2px] bg-dp-accent animate-blink"
+            <span v-if="msg.role === 'user'" class="whitespace-pre-wrap">{{ msg.content }}</span>
+            <div
+              v-else
+              class="md-body"
+              v-html="renderMarkdown(msg.content)"
             />
           </div>
           <el-button

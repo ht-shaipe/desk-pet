@@ -4,6 +4,7 @@ pub mod clipboard;
 pub mod disk;
 pub mod error;
 pub mod files;
+pub mod http;
 pub mod icons;
 pub mod launch;
 mod proc;

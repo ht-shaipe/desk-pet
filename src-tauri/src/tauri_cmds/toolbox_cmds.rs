@@ -71,3 +71,11 @@ pub fn reveal_path(path: String) -> Result<(), String> {
     deskpet_os::files::reveal_entry(Path::new(&path));
     Ok(())
 }
+
+/// 由 Rust 代理发送 HTTP 请求，绕开 WebView 跨域限制，并回传请求/响应头。
+#[tauri::command]
+pub async fn http_request(
+    spec: deskpet_os::http::HttpRequestSpec,
+) -> Result<deskpet_os::http::HttpResponseData, String> {
+    deskpet_os::http::send(&spec).await
+}

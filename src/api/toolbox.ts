@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { ImageFileInfo, ImagePayload } from "@/types";
+import type { HttpRequestSpec, HttpResponseData, ImageFileInfo, ImagePayload } from "@/types";
 
 export const getClipboardImage = () => invoke<ImagePayload | null>("get_clipboard_image");
 export const setClipboardImage = (payload: ImagePayload) =>
@@ -15,3 +15,7 @@ export const readImageDataUrl = (path: string) =>
 export const saveCompressedImage = (dir: string, srcName: string, dataUrl: string) =>
   invoke<string>("save_compressed_image", { dir, srcName, dataUrl });
 export const revealPath = (path: string) => invoke<void>("reveal_path", { path });
+
+/** 接口请求：由 Rust 代理发送，规避跨域 */
+export const httpRequest = (spec: HttpRequestSpec) =>
+  invoke<HttpResponseData>("http_request", { spec });

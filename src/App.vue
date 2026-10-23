@@ -84,7 +84,8 @@ function startResize(direction: ResizeDirection) {
     <PanelContainer v-show="ui.expanded" />
     <PetSprite />
 
-    <!-- 展开态窗口边缘缩放手柄：悬停时显示对应方向光标并高亮，按下拖动改变窗体大小。
+    <!-- 展开态窗口边缘缩放手柄：悬停时显示对应方向光标，按下拖动改变窗体大小。
+         四周与四角均不做颜色高亮，悬停只切换对应方向光标。
          z-10 需低于 PetSprite（z-20）：宠物图标位于窗口左上角，必须保持可点击/可拖拽，
          否则左上角手柄会截胡点击宠物（并因 1px 位移误触发 NW resize）。 -->
     <div v-show="ui.expanded" class="fixed inset-0 z-10 pointer-events-none" aria-hidden="true">

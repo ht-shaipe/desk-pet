@@ -1,10 +1,59 @@
 import { fetch } from "@tauri-apps/plugin-http";
+import type { ClientOptions } from "@tauri-apps/plugin-http";
 import type { AiModel, ChatMessage } from "@/types";
 
 /** 拼接 base_url 与路径，容忍末尾斜杠缺失。 */
 function joinUrl(base: string, path: string): string {
   const b = base.replace(/\/+$/, "");
   return `${b}${path}`;
+}
+
+/**
+ * 是否为本机或内网地址：证书回退仅对这些地址生效，公网地址保持严格校验。
+ * （本机 https 服务多为自签名证书，系统 CA 链验证不通过。）
+ */
+function isLocalOrPrivateHost(hostname: string): boolean {
+  const h = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (h === "localhost" || h === "::1") {
+    return true;
+  }
+  const m = h.match(/^(\d{1,3})\.(\d{1,3})(?:\.\d{1,3}){2}$/);
+  if (!m) {
+    return false;
+  }
+  const a = Number(m[1]);
+  const b = Number(m[2]);
+  return (
+    a === 10 || a === 127 || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31)
+  );
+}
+
+/**
+ * 带证书回退的请求：严格校验失败（多为本地服务自签名证书）且目标为本机/内网时，
+ * 自动忽略证书校验重试一次。
+ */
+async function fetchWithTlsFallback(url: string, init: RequestInit & ClientOptions): Promise<Response> {
+  let parsed: URL | null = null;
+  try {
+    parsed = new URL(url);
+  } catch {
+    // 无效 URL 交由下方正常请求抛出
+  }
+  if (!parsed || parsed.protocol !== "https:" || !isLocalOrPrivateHost(parsed.hostname)) {
+    return fetch(url, init);
+  }
+  try {
+    return await fetch(url, init);
+  } catch (err) {
+    if (!String(err).includes("error sending request")) {
+      throw err;
+    }
+    console.warn("[desk-pet] TLS 验证失败，忽略证书重试:", url);
+    return fetch(url, {
+      ...init,
+      danger: { acceptInvalidCerts: true, acceptInvalidHostnames: true },
+    });
+  }
 }
 
 export class AiApiError extends Error {
@@ -58,7 +107,7 @@ export interface StreamChatOptions {
 export async function streamChatCompletion(options: StreamChatOptions): Promise<void> {
   const { model, messages, signal, onDelta } = options;
   const url = joinUrl(model.base_url, "/chat/completions");
-  const res = await fetch(url, {
+  const res = await fetchWithTlsFallback(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

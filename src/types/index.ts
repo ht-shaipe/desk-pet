@@ -90,6 +90,41 @@ export interface ImageFileInfo {
   size: number;
 }
 
+/* ---------- 接口请求 ---------- */
+
+/** 请求头 / 查询参数键值对 */
+export interface HttpHeader {
+  name: string;
+  value: string;
+}
+
+/** 交给 Rust 代理发送的请求描述 */
+export interface HttpRequestSpec {
+  url: string;
+  method: string;
+  params: HttpHeader[];
+  headers: HttpHeader[];
+  body?: string;
+  bodyType?: "json" | "text";
+}
+
+/** Rust 代理返回的请求结果（含实际请求头与完整响应头） */
+export interface HttpResponseData {
+  status: number;
+  statusText: string;
+  durationMs: number;
+  /** 响应体字节数（截断前） */
+  size: number;
+  requestHeaders: HttpHeader[];
+  responseHeaders: HttpHeader[];
+  body: string;
+  truncated: boolean;
+  /** 非文本类型响应，前端不展示内容 */
+  binary: boolean;
+  /** 跟随重定向后的最终地址 */
+  finalUrl: string;
+}
+
 /* ---------- 磁盘清理 ---------- */
 
 export type CleanupKind = "logs" | "target" | "node_modules";

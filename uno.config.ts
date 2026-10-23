@@ -79,8 +79,34 @@ export default defineConfig({
     "toolbar-title": "text-[13px] font-semibold text-dp-secondary mr-auto",
     "view-scroll":
       "flex-1 min-h-0 [&_.el-scrollbar\\_\\_thumb]:bg-[color-mix(in_srgb,var(--dp-text-tertiary)_55%,transparent)] [&_.el-scrollbar\\_\\_thumb]:opacity-60 [&_.el-scrollbar\\_\\_thumb:hover]:bg-dp-accent [&_.el-scrollbar\\_\\_thumb:hover]:opacity-75",
-    /* 窗口边缘缩放手柄：透明命中区，悬停高亮提示可拖拽 */
-    "rs-hint":
-      "fixed pointer-events-auto transition-colors duration-150 ease-[ease] hover:bg-[color-mix(in_srgb,var(--dp-accent)_45%,transparent)]",
+    /* 窗口边缘缩放手柄：透明命中区，悬停仅变对应方向光标（不做颜色高亮，否则会误以为是一条 UI 边框） */
+    "rs-hint": "fixed pointer-events-auto",
+    /* AI 聊天 markdown 排版规范（v-html 生成，代码色用 color-mix(currentColor) 适配深浅主题） */
+    "md-body": "min-w-0 [word-break:break-word] [&_p]:my-0 [&_p+p]:mt-[0.45em]"
+      + "[&_h1]:text-[14.5px] [&_h1]:font-bold [&_h1]:mt-[0.7em] [&_h1]:mb-[0.3em] "
+      + "[&_h2]:text-[14px] [&_h2]:font-bold [&_h2]:mt-[0.6em] [&_h2]:mb-[0.28em] "
+      + "[&_h3]:text-[13.5px] [&_h3]:font-semibold [&_h3]:mt-[0.55em] [&_h3]:mb-[0.25em] "
+      + "[&_h4]:text-[13px] [&_h4]:font-semibold [&_h4]:mt-[0.5em] [&_h4]:mb-[0.2em] "
+      + "[&_h5]:text-[13px] [&_h5]:font-bold [&_h5]:italic [&_h5]:mt-[0.4em] [&_h5]:mb-[0.2em] "
+      + "[&_h6]:text-[12.5px] [&_h6]:text-dp-secondary [&_h6]:mt-[0.4em] [&_h6]:mb-[0.2em] "
+      + "[&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-[1.3em] [&_ol]:pl-[1.3em] "
+      + "[&_ul]:my-[0.35em] [&_ol]:my-[0.35em] [&_li+li]:mt-[2px] [&_li>ul]:mt-[2px] [&_li>ol]:mt-[2px] "
+      + "[&_blockquote]:my-[0.45em] [&_blockquote]:pl-[9px] [&_blockquote]:border-l-[3px] [&_blockquote]:border-dp-divider "
+      + "[&_blockquote]:text-dp-secondary [&_blockquote_p]:my-[0.2em] "
+      + "[&_code]:rounded-[4px] [&_code]:px-[4px] [&_code]:py-[0.5px] [&_code]:font-mono [&_code]:text-[11.8px] "
+      + "[&_code]:bg-[color-mix(in_srgb,currentColor_12%,transparent)] "
+      + "[&_pre]:my-[0.5em] [&_pre]:p-[7px] [&_pre]:rounded-[8px] [&_pre]:overflow-x-auto "
+      + "[&_pre]:border [&_pre]:border-dp-divider [&_pre]:bg-[color-mix(in_srgb,currentColor_8%,transparent)] "
+      + "[&_pre_code]:px-0 [&_pre_code]:py-0 [&_pre_code]:bg-transparent [&_pre_code]:text-[11.2px] "
+      + "[&_a]:text-dp-accent [&_a]:underline [&_a]:underline-offset-2 "
+      + "[&_table]:my-[0.5em] [&_table]:w-full [&_table]:border-collapse [&_table]:text-[12px] "
+      + "[&_th]:border [&_th]:border-dp-divider [&_th]:px-[6px] [&_th]:py-[3px] [&_th]:text-left "
+      + "[&_td]:border [&_td]:border-dp-divider [&_td]:px-[6px] [&_td]:py-[3px] "
+      + "[&_hr]:my-[0.7em] [&_hr]:border-dp-divider "
+      + "[&_img]:max-w-full [&_img]:rounded-lg",
+    /* 流式输出占位气泡：在最后一个块元素后追加闪烁光标 */
+    "md-cursor":
+      '[&>_:last-child]:after:content-["▍"] [&>_:last-child]:after:ml-[2px] '
+      + "[&>_:last-child]:after:animate-blink [&>_:last-child]:after:text-dp-accent",
   },
 });

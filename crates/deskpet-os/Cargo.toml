@@ -11,6 +11,7 @@ base64 = { workspace = true }
 thiserror = { workspace = true }
 plist = { workspace = true }
 fs4 = { workspace = true }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "gzip", "brotli", "deflate"] }
 
 [dev-dependencies]
 tempfile = { workspace = true }
