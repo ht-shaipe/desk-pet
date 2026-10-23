@@ -119,7 +119,7 @@ async function send() {
     const partial = pending.value?.content ?? "";
     const msg = abortController?.signal.aborted
       ? t("chat.stopped")
-      : `${t("chat.requestFail")}: ${err instanceof Error ? err.message : String(err)}`;
+      : requestFailText(err, model);
     if (partial) {
       await saveAssistant(`${partial}\n\n(${msg})`);
     } else {
@@ -191,6 +191,24 @@ function openAdd() {
   form.value = { name: "", base_url: "", api_key: "", model: "" };
 }
 
+/** base_url 未带协议时补 http://（不得使用 https://，会按域名解析失败）。 */
+function normalizeBaseUrl(url: string): string {
+  const trimmed = url.replace(/^([a-zA-Z][a-zA-Z0-9+.-]*)\/\//, "$1://");
+  return /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+}
+
+/** 本地服务 HTTPS 连不上时的针对性提示（LM Studio、Ollama 等本地服务仅提供 HTTP）。 */
+function requestFailText(err: unknown, model: AiModel): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  const isLocal = /[/:](localhost|127\.0\.0\.1|\[::1\])/i.test(model.base_url);
+  if (isLocal && /^https:\/\//i.test(model.base_url) && raw.includes("error sending request")) {
+    return `${t("chat.requestFail")}: ${raw} — ${t("chat.localHttpsHint", {
+      url: model.base_url.replace(/^https:\/\//i, "http://"),
+    })}`;
+  }
+  return `${t("chat.requestFail")}: ${raw}`;
+}
+
 function openEdit(model: AiModel) {
   editing.value = model;
   form.value = { name: model.name, base_url: model.base_url, api_key: model.api_key, model: model.model };
@@ -204,7 +222,8 @@ async function saveModel() {
   }
   const payload: Omit<AiModel, "id"> = {
     name: f.name.trim() || f.model.trim(),
-    base_url: f.base_url.trim(),
+    // 未写协议时默认按 http:// 处理（本地服务基本为 HTTP，少敲一个前缀）
+    base_url: normalizeBaseUrl(f.base_url.trim()),
     api_key: f.api_key.trim(),
     model: f.model.trim(),
   };

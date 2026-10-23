@@ -75,9 +75,12 @@ export default defineConfig({
   },
   shortcuts: {
     "view-root": "flex flex-col h-full min-h-0",
-    "view-toolbar": "flex items-center gap-2 min-h-9 shrink-0 pl-3",
+    "view-toolbar": "flex items-center gap-2 min-h-9 shrink-0",
     "toolbar-title": "text-[13px] font-semibold text-dp-secondary mr-auto",
     "view-scroll":
       "flex-1 min-h-0 [&_.el-scrollbar\\_\\_thumb]:bg-[color-mix(in_srgb,var(--dp-text-tertiary)_55%,transparent)] [&_.el-scrollbar\\_\\_thumb]:opacity-60 [&_.el-scrollbar\\_\\_thumb:hover]:bg-dp-accent [&_.el-scrollbar\\_\\_thumb:hover]:opacity-75",
+    /* 窗口边缘缩放手柄：透明命中区，悬停高亮提示可拖拽 */
+    "rs-hint":
+      "fixed pointer-events-auto transition-colors duration-150 ease-[ease] hover:bg-[color-mix(in_srgb,var(--dp-accent)_45%,transparent)]",
   },
 });

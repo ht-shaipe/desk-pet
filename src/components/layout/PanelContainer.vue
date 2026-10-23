@@ -73,7 +73,8 @@ function onBodyPointerdown() {
         />
         <span class="text-[11px] font-bold tracking-[1.5px] uppercase text-dp-muted">{{ config.settings.app_name ?? "Desk Pet" }}</span>
       </div>
-      <el-tooltip :content="t('panel.collapse')" placement="bottom" :show-after="300">
+      <!-- teleported=false：跟随面板隐藏，避免收起时 popper 锚点归零、闪现在宠物小窗位置 -->
+      <el-tooltip :content="t('panel.collapse')" placement="bottom" :show-after="300" :teleported="false">
         <button
           class="collapse-btn inline-flex items-center justify-center w-[26px] h-[26px] p-0 rounded-[9px] bg-transparent text-dp-muted cursor-pointer transition-[background,color] duration-180 ease-[ease] hover:bg-dp-btn-bg hover:text-dp-primary focus-visible:[outline:2px_solid_var(--dp-accent)] focus-visible:outline-offset-1"
           :aria-label="t('panel.collapse')"

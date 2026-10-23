@@ -110,6 +110,31 @@ pub struct CleanupStream {
     url: String,
 }
 
+/// 指定路径所在磁盘卷的空间情况（字节）。
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiskUsageInfo {
+    total: u64,
+    available: u64,
+}
+
+/// 查询 `root` 所在磁盘卷的总容量与可用空间。
+#[tauri::command]
+pub async fn disk_cleanup_usage(root: String) -> Result<DiskUsageInfo, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let root = PathBuf::from(root.trim());
+        let probe = root.canonicalize().unwrap_or(root);
+        deskpet_os::disk::disk_usage(&probe)
+            .map(|usage| DiskUsageInfo {
+                total: usage.total,
+                available: usage.available,
+            })
+            .map_err(|err| err.to_string())
+    })
+    .await
+    .map_err(|err| err.to_string())?
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 enum TargetKind {
     Logs,

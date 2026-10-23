@@ -4,7 +4,7 @@ import { useI18n } from "vue-i18n";
 import { ElMessage } from "element-plus";
 import { Delete, EditPen, Plus, Setting } from "@element-plus/icons-vue";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { getAppIcon, launchItem, listApps } from "@/api/launcher";
+import { getAppIcon, getAppIconPath, launchItem, listApps } from "@/api/launcher";
 import { useLauncherStore } from "@/stores/launcher";
 import { useConfigStore } from "@/stores/config";
 import type { AppEntry, LaunchType, LauncherItem } from "@/types";
@@ -111,6 +111,40 @@ function openEdit(item: LauncherItem) {
 const apps = ref<AppEntry[]>([]);
 let appsLoaded = false;
 
+/** 应用下拉列表图标：key 为 app.value，"" 表示已尝试但无图标。 */
+const appIconUrls = ref<Record<string, string>>({});
+let appIconsStarted = false;
+
+/** 后台按有限并发提取全部应用图标，图标随加载逐条出现在下拉列表中。 */
+async function loadAppIcons() {
+  if (appIconsStarted) {
+    return;
+  }
+  appIconsStarted = true;
+  const values = apps.value.map((a) => a.value);
+  let idx = 0;
+  const WORKERS = 4;
+  const worker = async () => {
+    while (idx < values.length) {
+      const value = values[idx++];
+      if (appIconUrls.value[value] !== undefined) {
+        continue;
+      }
+      try {
+        const path = await getAppIconPath(value);
+        if (path) {
+          appIconUrls.value[value] = convertFileSrc(path);
+        } else {
+          appIconUrls.value[value] = "";
+        }
+      } catch {
+        appIconUrls.value[value] = "";
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: WORKERS }, worker));
+}
+
 async function ensureApps() {
   if (appsLoaded) {
     return;
@@ -118,6 +152,7 @@ async function ensureApps() {
   appsLoaded = true;
   try {
     apps.value = await listApps();
+    void loadAppIcons();
   } catch {
     appsLoaded = false;
   }
@@ -249,7 +284,19 @@ function confirmDialog() {
             :placeholder="valuePlaceholder"
             @change="onAppPicked"
           >
-            <el-option v-for="app in apps" :key="app.value" :label="app.name" :value="app.value" />
+            <el-option v-for="app in apps" :key="app.value" :label="app.name" :value="app.value">
+              <div class="flex items-center gap-1.5 min-w-0">
+                <span class="inline-flex shrink-0 items-center justify-center w-[18px] h-[18px] rounded-[4px] overflow-hidden bg-dp-btn-bg">
+                  <img
+                    v-if="appIconUrls[app.value]"
+                    class="w-full h-full object-contain"
+                    :src="appIconUrls[app.value]"
+                    alt=""
+                  />
+                </span>
+                <span class="truncate">{{ app.name }}</span>
+              </div>
+            </el-option>
           </el-select>
           <el-input v-else v-model="form.value" :placeholder="valuePlaceholder" />
         </el-form-item>

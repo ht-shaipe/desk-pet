@@ -25,9 +25,11 @@ const activeComponent = computed(() => activeTool.value?.component);
       >
         {{ t("toolbox.back") }}
       </el-button>
-      <span class="toolbar-title">
+      <span class="toolbar-title pl-2">
         {{ activeTool ? t(activeTool.titleKey) : t("toolbox.title") }}
       </span>
+      <!-- 工具详情组件可通过 Teleport 往标题右侧补充紧凑信息（如磁盘占用） -->
+      <span v-if="activeTool" id="toolbox-toolbar-extra" class="flex min-w-0 items-center gap-1.5 pr-2.5" />
     </div>
 
     <!-- 首页：工具卡片列表 -->

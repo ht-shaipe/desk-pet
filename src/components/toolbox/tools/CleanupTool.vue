@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { FolderOpened, Loading } from "@element-plus/icons-vue";
 import { homeDir } from "@tauri-apps/api/path";
 import { open } from "@tauri-apps/plugin-dialog";
-import { cancelDiskCleanup, deleteDiskCleanup, scanDiskCleanup } from "@/api/cleanup";
-import type { CleanupCandidate, CleanupEvent, CleanupKind } from "@/types";
+import { cancelDiskCleanup, deleteDiskCleanup, getDiskUsage, scanDiskCleanup } from "@/api/cleanup";
+import type { CleanupCandidate, CleanupEvent, CleanupKind, DiskUsage } from "@/types";
 
 const { t } = useI18n();
 
@@ -35,6 +35,11 @@ const selectedIds = ref(new Set<string>());
 const activeJobId = ref("");
 const scanJobId = ref("");
 const stream = ref<EventSource | null>(null);
+
+// 扫描目录所在卷的磁盘占用，进入工具/切换目录时异步刷新
+const disk = ref<DiskUsage | null>(null);
+const diskLoading = ref(false);
+let diskSeq = 0;
 
 // 手动输入路径（目录选择器看不到 /tmp 等隐藏目录时直接粘贴路径）
 const editingPath = ref(false);
@@ -71,6 +76,25 @@ const totalBytes = computed(() =>
 const selectedBytes = computed(() =>
   candidates.value.reduce((sum, item) => (selectedIds.value.has(item.id) ? sum + item.bytes : sum), 0),
 );
+
+const diskPercent = computed(() => {
+  if (!disk.value || disk.value.total <= 0) {
+    return 0;
+  }
+  const used = disk.value.total - disk.value.available;
+  return Math.min(100, (used / disk.value.total) * 100);
+});
+
+/** 用量条颜色：≥90% 红、≥75% 橙，其余走强调色渐变。 */
+const diskBarClass = computed(() => {
+  if (diskPercent.value >= 90) {
+    return "bg-[#f56c6c]";
+  }
+  if (diskPercent.value >= 75) {
+    return "bg-[#e6a23c]";
+  }
+  return "bg-[linear-gradient(90deg,var(--dp-accent),var(--dp-accent-deep,#2f7de1))]";
+});
 
 const allSelected = computed(
   () => candidates.value.length > 0 && selectedIds.value.size >= candidates.value.length,
@@ -117,6 +141,26 @@ function fmt(bytes: number): string {
     index += 1;
   }
   return `${value >= 100 || index === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[index]}`;
+}
+
+/** 异步查询扫描目录所在卷的磁盘占用；序号防竞态，失败时静默收起用量条。 */
+async function loadDiskUsage(path: string) {
+  const seq = ++diskSeq;
+  diskLoading.value = true;
+  try {
+    const usage = await getDiskUsage(path);
+    if (seq === diskSeq) {
+      disk.value = usage;
+    }
+  } catch {
+    if (seq === diskSeq) {
+      disk.value = null;
+    }
+  } finally {
+    if (seq === diskSeq) {
+      diskLoading.value = false;
+    }
+  }
 }
 
 async function pickRoot() {
@@ -415,6 +459,13 @@ onMounted(async () => {
   }
 });
 
+// 进入工具默认目录、选择目录或手动输入路径后刷新磁盘占用
+watch(root, (value) => {
+  if (value) {
+    void loadDiskUsage(value);
+  }
+});
+
 onBeforeUnmount(() => {
   const jobId = activeJobId.value;
   const running = busy.value;
@@ -427,11 +478,33 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="flex h-full min-h-0 flex-col">
+    <!-- 磁盘占用传送到工具箱标题栏右侧显示 -->
+    <Teleport to="#toolbox-toolbar-extra">
+      <el-icon v-if="diskLoading" class="is-loading shrink-0 text-dp-accent" :size="12">
+        <Loading />
+      </el-icon>
+      <template v-else-if="disk">
+        <div class="h-1 w-14 shrink-0 overflow-hidden rounded-[99px] bg-dp-btn-bg" aria-hidden="true">
+          <span
+            class="block h-full rounded-[99px] transition-[width] duration-300 motion-reduce:transition-none motion-reduce:opacity-70"
+            :class="diskBarClass"
+            :style="{ width: `${diskPercent.toFixed(1)}%` }"
+          />
+        </div>
+        <span
+          class="min-w-0 truncate text-[10px] text-dp-tertiary"
+          :title="t('toolbox.tools.cleanup.diskFree', { size: fmt(disk.available) })"
+        >
+          {{
+            t("toolbox.tools.cleanup.diskUsed", {
+              used: fmt(disk.total - disk.available),
+              total: fmt(disk.total),
+            })
+          }}
+        </span>
+      </template>
+    </Teleport>
     <el-scrollbar class="view-scroll">
-      <p class="m-[2px_2px_8px] text-[10.5px] leading-[1.5] text-dp-tertiary">
-        {{ t("toolbox.tools.cleanup.rootHint") }}
-      </p>
-
       <section class="mb-2 rounded-[10px] border border-dp-card-border bg-dp-card-bg px-2.5 py-[9px]">
         <div class="mb-1.5 text-[10.5px] font-semibold tracking-[0.03em] text-dp-tertiary">
           {{ t("toolbox.tools.cleanup.root") }}

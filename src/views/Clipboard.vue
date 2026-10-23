@@ -14,6 +14,24 @@ function isUrl(text: string): boolean {
   return /^https?:\/\//i.test(text.trim());
 }
 
+/**
+ * 识别对象/数组形式的 JSON 文本。
+ * 限定 {、[ 开头且能完整解析：JSON.parse 对纯数字、布尔、引号字符串也会成功，
+ * 不加限定会把普通文本误标成 JSON。
+ */
+function isJson(text: string): boolean {
+  const s = text.trim();
+  if (!s.startsWith("{") && !s.startsWith("[")) {
+    return false;
+  }
+  try {
+    void JSON.parse(s);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 const filtered = computed(() => {
   const k = keyword.value.trim().toLowerCase();
   if (!k) {
@@ -87,6 +105,7 @@ async function onClear() {
         <div class="flex items-center justify-between mt-[5px] text-[11px] text-dp-tertiary">
           <span class="inline-flex items-center gap-[5px] min-w-0">
             <span v-if="isUrl(entry.text)" class="shrink-0 text-[10px] leading-none py-0.5 px-[5px] rounded-[4px] text-dp-accent bg-dp-tag-soft">URL</span>
+            <span v-else-if="isJson(entry.text)" class="shrink-0 text-[10px] leading-none py-0.5 px-[5px] rounded-[4px] text-dp-accent bg-dp-tag-soft" :title="t('clipboard.jsonTag')">JSON</span>
             <span v-else-if="entry.text.length > 80" class="shrink-0 text-[10px] leading-none py-0.5 px-[5px] rounded-[4px] text-dp-accent bg-dp-tag-soft">TEXT</span>
             {{ timeText(entry.updated_at) }}
           </span>

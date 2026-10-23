@@ -1,6 +1,7 @@
 pub mod actions;
 pub mod apps;
 pub mod clipboard;
+pub mod disk;
 pub mod error;
 pub mod files;
 pub mod icons;

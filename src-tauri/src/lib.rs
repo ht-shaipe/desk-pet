@@ -26,6 +26,7 @@ pub fn run() {
             tauri_cmds::launcher_cmds::save_launcher,
             tauri_cmds::launcher_cmds::launch_item,
             tauri_cmds::launcher_cmds::get_app_icon,
+            tauri_cmds::launcher_cmds::get_app_icon_by_value,
             tauri_cmds::launcher_cmds::list_apps,
             tauri_cmds::notes_cmds::get_notes,
             tauri_cmds::notes_cmds::save_notes,
@@ -44,9 +45,14 @@ pub fn run() {
             tauri_cmds::toolbox_cmds::set_clipboard_image,
             tauri_cmds::toolbox_cmds::save_qr_png,
             tauri_cmds::toolbox_cmds::save_image,
+            tauri_cmds::toolbox_cmds::list_image_files,
+            tauri_cmds::toolbox_cmds::read_image_data_url,
+            tauri_cmds::toolbox_cmds::save_compressed_image,
+            tauri_cmds::toolbox_cmds::reveal_path,
             tauri_cmds::cleanup_cmds::disk_cleanup_scan,
             tauri_cmds::cleanup_cmds::disk_cleanup_delete,
             tauri_cmds::cleanup_cmds::disk_cleanup_cancel,
+            tauri_cmds::cleanup_cmds::disk_cleanup_usage,
         ])
         .setup(|app| {
             use tauri::{Listener, Manager};

@@ -83,6 +83,13 @@ export interface ImagePayload {
   rgba: number[];
 }
 
+/** 目录批量压缩：目录内图片文件信息 */
+export interface ImageFileInfo {
+  name: string;
+  /** 文件大小（字节） */
+  size: number;
+}
+
 /* ---------- 磁盘清理 ---------- */
 
 export type CleanupKind = "logs" | "target" | "node_modules";
@@ -98,6 +105,12 @@ export interface CleanupCandidate {
 export interface CleanupStream {
   jobId: string;
   url: string;
+}
+
+/** 扫描目录所在磁盘卷的空间情况（字节）。 */
+export interface DiskUsage {
+  total: number;
+  available: number;
 }
 
 export type CleanupEvent =

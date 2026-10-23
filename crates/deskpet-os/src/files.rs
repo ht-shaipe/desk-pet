@@ -1,5 +1,6 @@
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
+use serde::Serialize;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -38,6 +39,83 @@ pub fn save_image(dir: &Path, data_url: &str) -> Result<PathBuf> {
     write_image(dir, "images", "img", ext, &bytes)
 }
 
+/// 目录下的图片文件信息。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ImageFileInfo {
+    /// 文件名（不含路径）
+    pub name: String,
+    /// 文件大小（字节）
+    pub size: u64,
+}
+
+/// 根据扩展名识别图片 MIME，支持 jpg / png / webp / bmp / gif。
+pub fn image_mime_by_ext(ext: &str) -> Option<&'static str> {
+    match ext {
+        "jpg" | "jpeg" => Some("image/jpeg"),
+        "png" => Some("image/png"),
+        "webp" => Some("image/webp"),
+        "bmp" => Some("image/bmp"),
+        "gif" => Some("image/gif"),
+        _ => None,
+    }
+}
+
+/// 列出目录下的图片文件：仅当前目录、跳过隐藏文件，按名称排序。
+/// 输出目录 compressed/ 为子目录，天然不会被列出。
+pub fn list_images(dir: &Path) -> Result<Vec<ImageFileInfo>> {
+    let mut files = Vec::new();
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        if !entry.file_type()?.is_file() {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.starts_with('.') {
+            continue;
+        }
+        let ext = name
+            .rsplit('.')
+            .next()
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        if image_mime_by_ext(&ext).is_some() {
+            files.push(ImageFileInfo {
+                name,
+                size: entry.metadata()?.len(),
+            });
+        }
+    }
+    files.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    Ok(files)
+}
+
+/// 将本地图片文件读取为 dataURL，供前端 canvas 压缩。
+pub fn read_image_data_url(path: &Path) -> Result<String> {
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase())
+        .unwrap_or_default();
+    let mime = image_mime_by_ext(&ext)
+        .ok_or_else(|| OsError::Other("不支持的图片格式".into()))?;
+    let bytes = fs::read(path)?;
+    Ok(format!("data:{mime};base64,{}", BASE64.encode(bytes)))
+}
+
+/// 将压缩结果 dataURL 保存到 `dir/compressed/{stem}.min.{ext}`，不覆盖源文件。
+pub fn save_compressed_image(dir: &Path, src_name: &str, data_url: &str) -> Result<PathBuf> {
+    let (ext, bytes) = decode_data_url(data_url)?;
+    let stem = Path::new(src_name)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .ok_or_else(|| OsError::Other("无效的文件名".into()))?;
+    let out = dir.join("compressed");
+    fs::create_dir_all(&out)?;
+    let path = out.join(format!("{stem}.min.{ext}"));
+    fs::write(&path, bytes)?;
+    Ok(path)
+}
+
 /// 在文件管理器中定位并高亮该文件。
 pub fn reveal(path: &Path) {
     #[cfg(target_os = "macos")]
@@ -49,6 +127,21 @@ pub fn reveal(path: &Path) {
     let _ = Command::new("explorer")
         .arg(format!("/select,{}", path.to_string_lossy()))
         .spawn();
+}
+
+/// 在文件管理器中打开目录或定位文件（批量压缩结果目录用）。
+pub fn reveal_entry(path: &Path) {
+    if path.is_dir() {
+        #[cfg(target_os = "macos")]
+        let _ = Command::new("open").arg(path).spawn();
+
+        #[cfg(target_os = "windows")]
+        let _ = Command::new("explorer")
+            .arg(path.to_string_lossy().to_string())
+            .spawn();
+    } else {
+        reveal(path);
+    }
 }
 
 fn write_image(dir: &Path, subdir: &str, prefix: &str, ext: &str, bytes: &[u8]) -> Result<PathBuf> {
@@ -104,5 +197,52 @@ mod tests {
     fn save_image_rejects_unknown_mime() {
         let dir = tempfile::tempdir().unwrap();
         assert!(save_image(dir.path(), "data:image/bmp;base64,AAAA").is_err());
+    }
+
+    #[test]
+    fn list_images_filters_and_sorts() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("b.png"), b"x").unwrap();
+        fs::write(dir.path().join("a.JPG"), b"yy").unwrap();
+        fs::write(dir.path().join("readme.txt"), b"z").unwrap();
+        fs::write(dir.path().join(".hidden.jpeg"), b"h").unwrap();
+        let sub = dir.path().join("sub");
+        fs::create_dir(&sub).unwrap();
+        fs::write(sub.join("nested.png"), b"n").unwrap();
+
+        let files = list_images(dir.path()).unwrap();
+        let names: Vec<&str> = files.iter().map(|f| f.name.as_str()).collect();
+        assert_eq!(names, vec!["a.JPG", "b.png"]);
+        assert_eq!(files[1].size, 1);
+    }
+
+    #[test]
+    fn read_image_data_url_roundtrip() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("t.png");
+        fs::write(&file, b"\x89PNG\r\n\x1a\n").unwrap();
+        let url = read_image_data_url(&file).unwrap();
+        assert!(url.starts_with("data:image/png;base64,"));
+
+        let txt = dir.path().join("t.txt");
+        fs::write(&txt, b"nope").unwrap();
+        assert!(read_image_data_url(&txt).is_err());
+    }
+
+    #[test]
+    fn save_compressed_image_uses_min_naming() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = save_compressed_image(dir.path(), "photo-1.jpg", TINY_PNG).unwrap();
+        assert_eq!(
+            path,
+            dir.path().join("compressed").join("photo-1.min.png")
+        );
+        assert!(path.is_file());
+    }
+
+    #[test]
+    fn save_compressed_image_rejects_invalid_data() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(save_compressed_image(dir.path(), "a.jpg", "bad").is_err());
     }
 }
