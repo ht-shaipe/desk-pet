@@ -203,15 +203,17 @@ function notifyUpdateAvailable(): void {
   });
 }
 
-/** 应用启动时静默检查更新 */
-async function checkOnStartup(): Promise<void> {
+/** 应用启动时静默检查更新；返回是否发现新版本。notify=false 时只记录状态不弹通知。 */
+async function checkOnStartup(notify = true): Promise<boolean> {
   try {
     const hasUpdate = await checkForUpdate(true);
-    if (hasUpdate && updateInfo.value) {
+    if (hasUpdate && updateInfo.value && notify) {
       notifyUpdateAvailable();
     }
+    return hasUpdate;
   } catch {
     // 静默失败
+    return false;
   }
 }
 

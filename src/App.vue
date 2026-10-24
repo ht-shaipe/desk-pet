@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, watch } from "vue";
+import { nextTick, onMounted, onUnmounted, watch } from "vue";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 
@@ -31,13 +31,32 @@ let unlistenMoved: UnlistenFn | undefined;
 let unlistenResized: UnlistenFn | undefined;
 
 onMounted(() => {
+  // 主窗口配置为 visible:false 启动：等首帧绘制完成再 show，避免透明窗首帧前的原生灰底闪现
+  nextTick()
+    .then(
+      () =>
+        new Promise<void>((resolve) => {
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+        })
+    )
+    .then(() => win.show())
+    .catch(() => win.show());
   void useClipboardStore().init();
   void useLauncherStore().init();
   void useNotesStore().init();
-  // 启动静默检查更新 + 周期性检查
+  // 启动静默检查更新 + 周期性检查；发现新版本时自动展开面板，直接打开设置-关于页处理下载
   const updater = useUpdater();
-  void updater.checkOnStartup();
   updater.startPeriodicCheck();
+  void updater
+    .checkOnStartup(false)
+    .then((hasUpdate) => {
+      if (hasUpdate) {
+        ui.settingsTab = "about";
+        ui.setActiveView("settings");
+        ui.expand();
+      }
+    })
+    .catch(() => undefined);
   void config
     .init()
     .then(() => win.onMoved((event) => config.onWindowMoved(event.payload)))

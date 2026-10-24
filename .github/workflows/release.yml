@@ -151,16 +151,18 @@ jobs:
               aarch64-apple-darwin) ARCH_SUFFIX="-aarch64" ;;
               x86_64-apple-darwin)  ARCH_SUFFIX="-x86_64" ;;
             esac
-            for f in "$BUNDLE_DIR"/macos/*.tar.gz "$BUNDLE_DIR"/macos/*.tar.gz.sig; do
+            for f in "$BUNDLE_DIR"/macos/*.app.tar.gz "$BUNDLE_DIR"/macos/*.app.tar.gz.sig; do
               if [ -f "$f" ]; then
                 BASENAME=$(basename "$f")
+                # 空格归一化：productName 带空格时 bundler 对不同产物的转写可能不一致，
+                # 统一的资产名保证清单 URL 与实际上传资产永远匹配
                 if [[ "$BASENAME" == *.sig ]]; then
                   ROOT="${BASENAME%.sig}"
                   ROOTNAME="${ROOT%.app.tar.gz}"
-                  NEWNAME="${ROOTNAME}${ARCH_SUFFIX}.app.tar.gz.sig"
+                  NEWNAME="${ROOTNAME// /.}${ARCH_SUFFIX}.app.tar.gz.sig"
                 else
                   ROOTNAME="${BASENAME%.app.tar.gz}"
-                  NEWNAME="${ROOTNAME}${ARCH_SUFFIX}.app.tar.gz"
+                  NEWNAME="${ROOTNAME// /.}${ARCH_SUFFIX}.app.tar.gz"
                 fi
                 cp "$f" "/tmp/$NEWNAME"
                 FILES+=("/tmp/$NEWNAME")
@@ -207,14 +209,14 @@ jobs:
             *) echo "::error::Unknown target $TARGET"; exit 1 ;;
           esac
 
-          # 确定性取签名文件：
-          # - macOS：bundle 下唯一的 .sig（.app.tar.gz.sig）
+          # 确定性取签名文件（与上传资产同目录同源）：
+          # - macOS：bundle/macos 下唯一的 .sig（.app.tar.gz.sig）
           # - Windows：明确取 nsis 的 setup.exe.sig（Tauri v2 下安装包本体即 updater 产物，
           #   msi 与 nsis 各有 .sig，不能 find|head -1 碰运气）
           if [ "${{ runner.os }}" = "Windows" ]; then
             SIG_FILE=$(find "$BUNDLE_DIR/nsis" -name "*-setup.exe.sig" -type f | head -1)
           else
-            SIG_FILE=$(find "$BUNDLE_DIR" -name "*.sig" -type f | head -1)
+            SIG_FILE=$(find "$BUNDLE_DIR/macos" -name "*.sig" -type f | head -1)
           fi
           if [ -z "$SIG_FILE" ]; then
             echo "::error::No .sig file found in $BUNDLE_DIR"
@@ -223,8 +225,20 @@ jobs:
           fi
           SIGNATURE=$(cat "$SIG_FILE")
 
-          SIG_BASENAME=$(basename "$SIG_FILE")
-          ARCHIVE_NAME="${SIG_BASENAME%.sig}"
+          # ARCHIVE_NAME 必须与 Upload release assets 上传的资产名同源：
+          # 直接取真正的产物文件名（而非从 .sig 推导），并做同样的空格→'.'归一化，
+          # 否则 productName 带空格时清单 URL 会指到不存在的资产，更新端报 404。
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            ARCHIVE_FILE=$(find "$BUNDLE_DIR/nsis" -name "*-setup.exe" -type f | head -1)
+          else
+            ARCHIVE_FILE=$(find "$BUNDLE_DIR/macos" -name "*.app.tar.gz" -type f | head -1)
+          fi
+          if [ -z "$ARCHIVE_FILE" ]; then
+            echo "::error::No updater archive found in $BUNDLE_DIR"
+            find "$BUNDLE_DIR" -type f
+            exit 1
+          fi
+          ARCHIVE_NAME=$(basename "$ARCHIVE_FILE" | tr ' ' '.')
           # macOS两个 target 上传时按架构重命名了，url 也要指向重命名后的文件
           case "$TARGET" in
             aarch64-apple-darwin) ARCHIVE_NAME="${ARCHIVE_NAME%.app.tar.gz}-aarch64.app.tar.gz" ;;
@@ -319,6 +333,24 @@ jobs:
             console.log('--- latest.json ---');
             console.log(JSON.stringify(manifest, null, 2));
           "
+
+          # 上传前校验清单里每个平台的 URL 都真实可达，防止资产名/清单名不一致再发 404
+          FAIL=0
+          for u in $(node -e "
+            const fs = require('fs');
+            const m = JSON.parse(fs.readFileSync('latest.json', 'utf8'));
+            for (const p of Object.values(m.platforms)) console.log(p.url);
+          "); do
+            CODE=$(curl -s -o /dev/null -w '%{http_code}' -L --max-time 30 "$u") || CODE=000
+            if [ "$CODE" != "200" ]; then
+              echo "::error::更新清单 URL 不可达 (HTTP $CODE): $u"
+              FAIL=1
+            fi
+          done
+          if [ "$FAIL" = "1" ]; then
+            echo "::error::latest.json 中存在不可达的下载地址，拒绝上传坏清单"
+            exit 1
+          fi
 
           gh release upload "$TAG" latest.json --clobber --repo "$REPO"
           echo "OK latest.json uploaded"

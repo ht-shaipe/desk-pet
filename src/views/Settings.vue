@@ -1,15 +1,26 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { ElMessage } from "element-plus";
 import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useConfigStore } from "@/stores/config";
+import { useUiStore } from "@/stores/ui";
 import { useUpdater } from "@/composables/useUpdater";
 
 const { t } = useI18n();
 const config = useConfigStore();
-const activeTab = ref("general");
+const ui = useUiStore();
+const activeTab = ref(ui.settingsTab);
+// 其它模块（如启动检查到更新）通过 ui.settingsTab 指定要打开的 tab
+watch(
+  () => ui.settingsTab,
+  (tab) => {
+    if (tab && tab !== activeTab.value) {
+      activeTab.value = tab;
+    }
+  }
+);
 const autostart = ref(false);
 const presetColors = ["#3d8bfd", "#7265e6", "#67c23a", "#e6a23c", "#f56c6c", "#00a2ae", "#eb2f96"];
 

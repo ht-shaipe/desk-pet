@@ -15,9 +15,15 @@ export type PanelView =
 export const useUiStore = defineStore("ui", () => {
   const expanded = ref(false);
   const activeView = ref<PanelView>("chat");
+  /** Settings 页初始/跳转的 tab（如启动检查到更新后跳到 about） */
+  const settingsTab = ref("general");
 
   function toggleExpanded() {
     expanded.value = !expanded.value;
+  }
+
+  function expand() {
+    expanded.value = true;
   }
 
   function collapse() {
@@ -28,5 +34,5 @@ export const useUiStore = defineStore("ui", () => {
     activeView.value = view;
   }
 
-  return { expanded, activeView, toggleExpanded, collapse, setActiveView };
+  return { expanded, activeView, settingsTab, toggleExpanded, expand, collapse, setActiveView };
 });

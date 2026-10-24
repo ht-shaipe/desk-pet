@@ -319,14 +319,14 @@ async function removeModel(model: AiModel) {
               msg.role === 'user'
                 ? 'bg-dp-accent text-white rounded-br-[4px]'
                 : 'bg-dp-btn-bg text-dp-primary rounded-bl-[4px]',
-              msg.role !== 'user' && pending && msg.id < 0 ? 'md-cursor' : '',
+              msg.role !== 'user' && pending && msg.id < 0 ? 'chat-md-cursor' : '',
             ]"
             @click="msg.role === 'user' ? undefined : onLinkClick($event)"
           >
             <span v-if="msg.role === 'user'" class="whitespace-pre-wrap">{{ msg.content }}</span>
             <div
               v-else
-              class="md-body"
+              class="chat-md-body"
               v-html="renderMarkdown(msg.content)"
             />
           </div>

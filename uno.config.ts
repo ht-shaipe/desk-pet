@@ -81,8 +81,9 @@ export default defineConfig({
       "flex-1 min-h-0 [&_.el-scrollbar\\_\\_thumb]:bg-[color-mix(in_srgb,var(--dp-text-tertiary)_55%,transparent)] [&_.el-scrollbar\\_\\_thumb]:opacity-60 [&_.el-scrollbar\\_\\_thumb:hover]:bg-dp-accent [&_.el-scrollbar\\_\\_thumb:hover]:opacity-75",
     /* 窗口边缘缩放手柄：透明命中区，悬停仅变对应方向光标（不做颜色高亮，否则会误以为是一条 UI 边框） */
     "rs-hint": "fixed pointer-events-auto",
-    /* AI 聊天 markdown 排版规范（v-html 生成，代码色用 color-mix(currentColor) 适配深浅主题） */
-    "md-body": "min-w-0 [word-break:break-word] [&_p]:my-0 [&_p+p]:mt-[0.45em]"
+    /* AI 聊天 markdown 排版规范（v-html 生成，代码色用 color-mix(currentColor) 适配深浅主题）。
+       注意：快捷类名不能以 sm-/md-/lg-/xl-/2xl- 等断点前缀开头，否则被 UnoCSS 当作变体吞掉不生成 */
+    "chat-md-body": "min-w-0 [word-break:break-word] [&_p]:my-0 [&_p+p]:mt-[0.45em] "
       + "[&_h1]:text-[14.5px] [&_h1]:font-bold [&_h1]:mt-[0.7em] [&_h1]:mb-[0.3em] "
       + "[&_h2]:text-[14px] [&_h2]:font-bold [&_h2]:mt-[0.6em] [&_h2]:mb-[0.28em] "
       + "[&_h3]:text-[13.5px] [&_h3]:font-semibold [&_h3]:mt-[0.55em] [&_h3]:mb-[0.25em] "
@@ -105,7 +106,7 @@ export default defineConfig({
       + "[&_hr]:my-[0.7em] [&_hr]:border-dp-divider "
       + "[&_img]:max-w-full [&_img]:rounded-lg",
     /* 流式输出占位气泡：在最后一个块元素后追加闪烁光标 */
-    "md-cursor":
+    "chat-md-cursor":
       '[&>_:last-child]:after:content-["▍"] [&>_:last-child]:after:ml-[2px] '
       + "[&>_:last-child]:after:animate-blink [&>_:last-child]:after:text-dp-accent",
   },
