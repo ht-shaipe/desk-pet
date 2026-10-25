@@ -5,6 +5,7 @@ import { listen } from "@tauri-apps/api/event";
 import {
   clearClipboardHistory,
   copyToClipboard,
+  deleteClipboardEntries,
   deleteClipboardEntry,
   getClipboardHistory,
 } from "@/api/clipboard";
@@ -40,6 +41,12 @@ export const useClipboardStore = defineStore("clipboard", () => {
     await refresh();
   }
 
+  /** 批量删除（按类型/日期条件清空用），一次落库。 */
+  async function removeMany(ids: string[]) {
+    await deleteClipboardEntries(ids);
+    await refresh();
+  }
+
   async function clearAll() {
     await clearClipboardHistory();
     await refresh();
@@ -49,5 +56,5 @@ export const useClipboardStore = defineStore("clipboard", () => {
     unlisten?.();
   }
 
-  return { entries, init, refresh, copy, remove, clearAll, dispose };
+  return { entries, init, refresh, copy, remove, removeMany, clearAll, dispose };
 });

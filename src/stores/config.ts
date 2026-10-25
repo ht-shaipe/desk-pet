@@ -230,6 +230,18 @@ export const useConfigStore = defineStore("config", () => {
     schedulePersist();
   }
 
+  /** 收藏云同步开关。 */
+  async function setFavoriteSync(enabled: boolean) {
+    settings.value.favorite_sync = enabled;
+    schedulePersist();
+  }
+
+  /** 收藏增量拉取基线（服务端 serverNow）。 */
+  async function setFavoriteLastSync(serverNow: string) {
+    settings.value.favorite_last_sync = serverNow;
+    schedulePersist();
+  }
+
   /** 退出登录：清除 token 与账户名。 */
   async function logout() {
     settings.value.auth_token = null;
@@ -337,6 +349,8 @@ export const useConfigStore = defineStore("config", () => {
       show_dock: typeof s.show_dock === "boolean" ? s.show_dock : true,
       ai_models: normalizeAiModels(s.ai_models),
       ai_active: typeof s.ai_active === "string" ? s.ai_active : null,
+      favorite_sync: s.favorite_sync == null ? false : Boolean(s.favorite_sync),
+      favorite_last_sync: s.favorite_last_sync ?? null,
     };
     setAppLocale(locale);
     applyTheme(theme);
@@ -360,6 +374,8 @@ export const useConfigStore = defineStore("config", () => {
     setAccentColor,
     setAppName,
     setAuth,
+    setFavoriteSync,
+    setFavoriteLastSync,
     logout,
     changePetAvatar,
     resetPetAvatarConfig,

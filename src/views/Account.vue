@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import { ElMessage } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 import { ArrowRight, CircleCloseFilled, Loading, UserFilled } from "@element-plus/icons-vue";
 import { useConfigStore } from "@/stores/config";
 import {
@@ -231,6 +231,15 @@ async function submit() {
 }
 
 async function onLogout() {
+  try {
+    await ElMessageBox.confirm(t("account.logoutConfirm"), t("account.logout"), {
+      confirmButtonText: t("account.logout"),
+      cancelButtonText: t("common.cancel"),
+      type: "warning",
+    });
+  } catch {
+    return;
+  }
   await config.logout();
   mode.value = "login";
   mobile.value = "";
@@ -255,7 +264,9 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="flex flex-col overflow-y-auto pt-1.5 px-0.5 pb-0.5">
+  <div class="view-root">
+    <el-scrollbar class="view-scroll">
+      <div class="pt-1.5 px-0.5 pb-0.5">
     <!-- 已登录 -->
     <div v-if="loggedIn" class="bg-dp-card-bg border border-dp-card-border rounded-[14px] shadow-dp-card overflow-hidden">
       <div
@@ -270,7 +281,7 @@ onMounted(async () => {
       </div>
       <div class="flex flex-col items-center gap-2.5 pt-3.5 px-4 pb-4.5">
         <div class="text-xs text-dp-muted">{{ t("account.syncHint") }}</div>
-        <el-button size="small" class="w-full" @click="onLogout">
+        <el-button class="w-full h-[42px] p-0 rounded-[10px] text-sm font-semibold" @click="onLogout">
           {{ t("account.logout") }}
         </el-button>
       </div>
@@ -435,6 +446,8 @@ onMounted(async () => {
         </div>
       </div>
     </div>
+      </div>
+    </el-scrollbar>
   </div>
 </template>
 

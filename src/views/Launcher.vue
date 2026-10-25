@@ -1,10 +1,14 @@
 <script setup lang="ts">
+import type { Component } from "vue";
 import { computed, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { ElMessage } from "element-plus";
-import { Delete, EditPen, Plus, Setting } from "@element-plus/icons-vue";
+import {
+  Bell, Connection, Delete, EditPen, Lock, Monitor, Moon, MoonNight, Mute, Plus, Setting,
+} from "@element-plus/icons-vue";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { getAppIcon, getAppIconPath, launchItem, listApps } from "@/api/launcher";
+import { quickAction } from "@/api/system";
 import { useLauncherStore } from "@/stores/launcher";
 import { useConfigStore } from "@/stores/config";
 import type { AppEntry, LaunchType, LauncherItem } from "@/types";
@@ -15,6 +19,48 @@ const config = useConfigStore();
 const editMode = ref(false);
 const dialogVisible = ref(false);
 const editingId = ref<string | null>(null);
+
+// ---------- 快捷操作（原 QuickSettings 视图并入，子 tab 切换） ----------
+
+type LaunchTab = "launch" | "quick";
+const tab = ref<LaunchTab>("launch");
+
+/** 子 tab 选中态：品牌色胶囊 vs 静默灰字。 */
+function subTabCls(name: LaunchTab): string {
+  return tab.value === name
+    ? "bg-dp-accent text-white shadow-[0_2px_8px_-2px_color-mix(in_srgb,var(--dp-accent)_55%,transparent)]"
+    : "text-dp-tertiary hover:text-dp-secondary";
+}
+
+interface QuickItem {
+  action: string;
+  label: string;
+  icon: Component;
+  macOnly?: boolean;
+}
+
+const quickActions = computed<QuickItem[]>(() => [
+  { action: "dark-mode", label: t("quick.darkMode"), icon: Moon, macOnly: true },
+  { action: "mute", label: t("quick.mute"), icon: Mute, macOnly: true },
+  { action: "lock", label: t("quick.lock"), icon: Lock },
+  { action: "sleep", label: t("quick.sleep"), icon: MoonNight },
+  { action: "open-settings:main", label: t("quick.sysSettings"), icon: Setting },
+  { action: "open-settings:sound", label: t("quick.sound"), icon: Bell },
+  { action: "open-settings:display", label: t("quick.display"), icon: Monitor },
+  { action: "open-settings:network", label: t("quick.network"), icon: Connection },
+]);
+
+const quickVisible = computed(() =>
+  quickActions.value.filter((a) => !a.macOnly || config.platform === "macos")
+);
+
+async function onQuickAction(item: QuickItem) {
+  try {
+    await quickAction(item.action);
+  } catch (e) {
+    ElMessage.error(String(e));
+  }
+}
 
 function emptyForm(): LauncherItem {
   return {
@@ -197,15 +243,31 @@ function confirmDialog() {
 <template>
   <div class="view-root">
     <div class="view-toolbar">
-      <span class="toolbar-title">{{ t("launcher.title") }}</span>
-      <el-button v-if="!editMode" size="small" text :icon="Setting" @click="editMode = true">
+      <!-- 子 tab：快速启动 / 快捷操作（macOS 分段胶囊：全圆角容器 + 选中品牌色） -->
+      <div class="mr-auto inline-flex items-center rounded-full bg-dp-btn-bg p-[3px]">
+        <button
+          class="px-3 h-[22px] rounded-full text-[11.5px] leading-none font-medium cursor-pointer select-none transition-colors duration-150 ease-[ease]"
+          :class="subTabCls('launch')"
+          @click="tab = 'launch'"
+        >
+          {{ t("tabs.launcher") }}
+        </button>
+        <button
+          class="px-3 h-[22px] rounded-full text-[11.5px] leading-none font-medium cursor-pointer select-none transition-colors duration-150 ease-[ease]"
+          :class="subTabCls('quick')"
+          @click="tab = 'quick'"
+        >
+          {{ t("tabs.quick") }}
+        </button>
+      </div>
+      <el-button v-if="tab === 'launch' && !editMode" size="small" text :icon="Setting" @click="editMode = true">
         {{ t("launcher.manage") }}
       </el-button>
-      <el-button v-else size="small" text type="primary" @click="editMode = false">
+      <el-button v-else-if="tab === 'launch'" size="small" text type="primary" @click="editMode = false">
         {{ t("launcher.done") }}
       </el-button>
     </div>
-    <el-scrollbar class="view-scroll">
+    <el-scrollbar v-if="tab === 'launch'" class="view-scroll">
       <div v-if="store.items.length > 0 || editMode" class="flex flex-col gap-3.5 pt-2 px-0.5 pb-1">
         <section v-for="group in groups" :key="group.value">
           <div class="flex items-center gap-1.5 px-0.5 pb-0.5">
@@ -256,6 +318,22 @@ function confirmDialog() {
       <div v-if="editMode" class="flex items-center gap-1 mt-2.5 text-dp-tertiary text-xs">
         <el-icon :size="12"><EditPen /></el-icon>
         {{ t("launcher.editHint") }}
+      </div>
+    </el-scrollbar>
+    <!-- 快捷操作动作网格（原快捷操作视图）：el-scrollbar 统一滚动条样式 -->
+    <el-scrollbar v-else class="view-scroll">
+      <div class="grid grid-cols-2 gap-2.5 pt-2 px-0.5 pb-0.5 content-start">
+        <button
+          v-for="item in quickVisible"
+          :key="item.action"
+          class="flex flex-col items-center gap-2 py-4 px-1.5 bg-dp-card-bg border border-dp-card-border rounded-xl cursor-pointer transition-all duration-150 ease-[ease] hover:border-dp-card-hover-border hover:shadow-dp-card-hover active:scale-[0.97]"
+          @click="onQuickAction(item)"
+        >
+          <span class="text-dp-accent">
+            <el-icon :size="20"><component :is="item.icon" /></el-icon>
+          </span>
+          <span class="text-[11.5px] text-dp-secondary">{{ item.label }}</span>
+        </button>
       </div>
     </el-scrollbar>
 

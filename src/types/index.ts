@@ -41,6 +41,31 @@ export interface AppSettings {
   show_dock?: boolean | null;
   ai_models?: AiModel[];
   ai_active?: string | null;
+  /** 收藏云同步开关（token 复用 auth_token） */
+  favorite_sync?: boolean | null;
+  /** 收藏增量拉取基线（服务端时间） */
+  favorite_last_sync?: string | null;
+}
+
+export type FavType = "repo" | "article" | "video" | "product" | "social" | "image" | "bookmark" | "note";
+
+/** 收藏条目：与 stash 扩展 / hub 云端字段一致。 */
+export interface Favorite {
+  url: string;
+  name: string;
+  description: string;
+  fav_type: string;
+  /** 附加载荷 JSON 字符串（note 正文、图片地址等） */
+  payload: string;
+  languages: string[];
+  stars: number;
+  forks: number;
+  tags: string[];
+  category: number;
+  category_name: string;
+  /** ISO 时间字符串 */
+  create_time: string;
+  update_time: string;
 }
 
 export type LaunchType = "app" | "url" | "command";
@@ -62,13 +87,6 @@ export interface LauncherConfig {
 export interface AppEntry {
   name: string;
   value: string;
-}
-
-export interface Note {
-  id: string;
-  content: string;
-  color: string;
-  updated_at: number;
 }
 
 export interface ClipEntry {

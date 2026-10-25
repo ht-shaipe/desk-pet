@@ -294,6 +294,20 @@ function connect(jobId: string, url: string) {
   };
 }
 
+/** 删除过程中磁盘统计的防抖刷新：每删一项都会逼近真实占用，但连续删除时合并请求。 */
+let diskRefreshTimer: ReturnType<typeof setTimeout> | undefined;
+
+function scheduleDiskUsageRefresh(): void {
+  if (diskRefreshTimer !== undefined || !root.value) {
+    return;
+  }
+  diskRefreshTimer = setTimeout(() => {
+    diskRefreshTimer = undefined;
+    // 回调里读实时 root.value：挂起期间用户切换了目录也不会刷错对象
+    void loadDiskUsage(root.value ?? "");
+  }, 220);
+}
+
 function handleEvent(data: CleanupEvent) {
   switch (data.type) {
     case "started":
@@ -331,6 +345,8 @@ function handleEvent(data: CleanupEvent) {
         deletedIds.value.add(data.id);
         removal.removed += 1;
         removal.bytes += data.bytes;
+        // 每删一项刷新上方磁盘占用，让清理进度更直观
+        scheduleDiskUsageRefresh();
         // 已删除项退出勾选集
         const next = new Set(selectedIds.value);
         next.delete(data.id);
@@ -347,6 +363,8 @@ function handleEvent(data: CleanupEvent) {
       deletingId.value = "";
       phase.value = "done";
       closeStream();
+      // 收尾兜底：防抖窗口内的最后几条删除也要体现在磁盘统计里
+      scheduleDiskUsageRefresh();
       if (data.failed > 0) {
         ElMessage.warning(
           t("toolbox.tools.cleanup.deletePartial", {
@@ -470,6 +488,10 @@ onBeforeUnmount(() => {
   const jobId = activeJobId.value;
   const running = busy.value;
   closeStream();
+  if (diskRefreshTimer !== undefined) {
+    clearTimeout(diskRefreshTimer);
+    diskRefreshTimer = undefined;
+  }
   if (running && jobId) {
     void cancelDiskCleanup(jobId).catch(() => {});
   }
@@ -648,7 +670,7 @@ onBeforeUnmount(() => {
             class="shrink-0 text-[10.5px]"
             :model-value="allSelected"
             :indeterminate="someSelected"
-            :disabled="busy"
+            :disabled="busy || phase === 'done' || failedIds.size > 0"
             @change="(v: boolean) => toggleSelectAll(v)"
           >
             {{ t("toolbox.tools.cleanup.selectAll") }}

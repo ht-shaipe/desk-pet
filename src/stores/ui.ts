@@ -3,12 +3,11 @@ import { ref } from "vue";
 
 export type PanelView =
   | "launcher"
-  | "notes"
   | "pomodoro"
   | "clipboard"
+  | "stash"
   | "toolbox"
   | "chat"
-  | "quick"
   | "account"
   | "settings";
 

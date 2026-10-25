@@ -289,11 +289,12 @@ async function copyBody() {
           <div v-if="resp.binary" class="text-[11px] text-dp-tertiary">
             {{ t("toolbox.tools.http.binary") }}
           </div>
-          <pre
-            v-else-if="prettyBody"
-            class="m-0 p-2 rounded-md bg-dp-panel-bg border border-dp-card-border text-[10.5px] leading-[1.55] font-mono whitespace-pre-wrap break-all max-h-[220px] overflow-auto text-dp-secondary"
-            >{{ prettyBody }}</pre
-          >
+          <el-scrollbar v-else-if="prettyBody" max-height="220px" class="dp-scroll">
+            <pre
+              class="m-0 p-2 rounded-md bg-dp-panel-bg border border-dp-card-border text-[10.5px] leading-[1.55] font-mono whitespace-pre-wrap break-all text-dp-secondary"
+              >{{ prettyBody }}</pre
+            >
+          </el-scrollbar>
           <div v-else class="text-[11px] text-dp-tertiary">
             {{ t("toolbox.tools.http.emptyValue") }}
           </div>

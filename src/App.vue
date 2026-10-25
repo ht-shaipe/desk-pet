@@ -19,9 +19,10 @@ import { useUiStore } from "@/stores/ui";
 import { useConfigStore } from "@/stores/config";
 import { useClipboardStore } from "@/stores/clipboard";
 import { useLauncherStore } from "@/stores/launcher";
-import { useNotesStore } from "@/stores/notes";
+import { useFavoritesStore } from "@/stores/favorites";
 import { collapseWindow, expandWindow, rememberPanelSize } from "@/lib/windowCtl";
 import { useUpdater } from "@/composables/useUpdater";
+import { autoPullFavorites } from "@/composables/useStashCloud";
 
 const ui = useUiStore();
 const config = useConfigStore();
@@ -31,19 +32,26 @@ let unlistenMoved: UnlistenFn | undefined;
 let unlistenResized: UnlistenFn | undefined;
 
 onMounted(() => {
-  // 主窗口配置为 visible:false 启动：等首帧绘制完成再 show，避免透明窗首帧前的原生灰底闪现
+  // 主窗口配置为 visible:false 启动：等首帧绘制完成再 show，避免透明窗首帧前的原生灰底闪现。
+  // 兜底：macOS WKWebView 在窗口未显示时可能暂停 rAF（回调永不触发），超时后仍必须 show，
+  // 否则主面板永远打不开。
   nextTick()
-    .then(
-      () =>
-        new Promise<void>((resolve) => {
-          requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-        })
-    )
+    .then(() => {
+      const painted = new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      });
+      const timeout = new Promise<void>((resolve) => setTimeout(resolve, 400));
+      return Promise.race([painted, timeout]);
+    })
     .then(() => win.show())
-    .catch(() => win.show());
+    .catch(() => {
+      win.show();
+    });
   void useClipboardStore().init();
   void useLauncherStore().init();
-  void useNotesStore().init();
+  void useFavoritesStore().init().catch((err) => console.error("[favorites] init failed:", err));
+  // 云同步开启时启动静默自动拉取：必须等 config.init() 载入开关/token 后再触发
+  // （与收藏页开页共用 5 分钟节流，不会重复拉）
   // 启动静默检查更新 + 周期性检查；发现新版本时自动展开面板，直接打开设置-关于页处理下载
   const updater = useUpdater();
   updater.startPeriodicCheck();
@@ -57,13 +65,15 @@ onMounted(() => {
       }
     })
     .catch(() => undefined);
-  void config
-    .init()
+  const configInited = config.init();
+  void configInited
     .then(() => win.onMoved((event) => config.onWindowMoved(event.payload)))
     .then((unlisten) => {
       unlistenMoved = unlisten;
     })
     .catch((err) => console.error("[desk-pet] 窗口位置初始化失败:", err));
+  // 启动自动同步：设置载入完成后静默拉取云端收藏（云同步开启且已登录时才生效）
+  void configInited.then(() => autoPullFavorites()).catch(() => undefined);
   win
     .onResized((event) => {
       if (ui.expanded) {

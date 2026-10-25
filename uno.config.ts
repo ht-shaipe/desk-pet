@@ -79,6 +79,13 @@ export default defineConfig({
     "toolbar-title": "text-[13px] font-semibold text-dp-secondary mr-auto",
     "view-scroll":
       "flex-1 min-h-0 [&_.el-scrollbar\\_\\_thumb]:bg-[color-mix(in_srgb,var(--dp-text-tertiary)_55%,transparent)] [&_.el-scrollbar\\_\\_thumb]:opacity-60 [&_.el-scrollbar\\_\\_thumb:hover]:bg-dp-accent [&_.el-scrollbar\\_\\_thumb:hover]:opacity-75",
+    /* 通用限高滚动区（view-root 以外）：只带主题 thumb 样式，不带 flex 约束 */
+    "dp-scroll":
+      "w-full [&_.el-scrollbar\\_\\_thumb]:bg-[color-mix(in_srgb,var(--dp-text-tertiary)_55%,transparent)] [&_.el-scrollbar\\_\\_thumb]:opacity-60 [&_.el-scrollbar\\_\\_thumb:hover]:bg-dp-accent [&_.el-scrollbar\\_\\_thumb:hover]:opacity-75",
+    /* el-tooltip 轻量气泡：效果须配 effect="light" + popper-class="dp-tip" + :teleported="false"。
+       !important 压过 EP 的 .el-popper.is-light（0-2-0），主题色全走 --dp-* 变量。 */
+    "dp-tip":
+      "!rounded-[8px] !border !border-dp-card-border !bg-dp-panel-bg !px-2.5 !py-1.5 !text-[11px] !leading-[1.55] !text-dp-secondary shadow-dp-panel [&_.el-popper\\_\\_arrow]:hidden",
     /* 窗口边缘缩放手柄：透明命中区，悬停仅变对应方向光标（不做颜色高亮，否则会误以为是一条 UI 边框） */
     "rs-hint": "fixed pointer-events-auto",
     /* AI 聊天 markdown 排版规范（v-html 生成，代码色用 color-mix(currentColor) 适配深浅主题）。
@@ -109,5 +116,21 @@ export default defineConfig({
     "chat-md-cursor":
       '[&>_:last-child]:after:content-["▍"] [&>_:last-child]:after:ml-[2px] '
       + "[&>_:last-child]:after:animate-blink [&>_:last-child]:after:text-dp-accent",
+    /* 面板内小弹窗基座：贴 dp 主题卡片 token、紧凑分区（class 落在 .el-dialog 根上，同 Chat.vue 基准） */
+    "dp-dialog":
+      "bg-dp-panel-bg rounded-[14px] border border-dp-card-border shadow-dp-panel overflow-hidden "
+      + "[&_.el-dialog\\_\\_header]:px-[16px] [&_.el-dialog\\_\\_header]:py-[12px] "
+      + "[&_.el-dialog\\_\\_headerbtn]:top-[12px] [&_.el-dialog\\_\\_headerbtn]:right-[12px] "
+      + "[&_.el-dialog\\_\\_title]:text-[13.5px] [&_.el-dialog\\_\\_title]:font-medium [&_.el-dialog\\_\\_title]:text-dp-primary "
+      + "[&_.el-dialog\\_\\_body]:px-[16px] [&_.el-dialog\\_\\_body]:py-[10px] "
+      + "[&_.el-dialog\\_\\_footer]:px-[16px] [&_.el-dialog\\_\\_footer]:pt-[8px] [&_.el-dialog\\_\\_footer]:pb-[14px]",
+    /* 弹窗内紧凑表单：EP 默认 18px 行距在 352px 弹窗里过松，统一收紧 */
+    "dp-form":
+      "[&_.el-form-item]:mb-[10px] [&_.el-form-item\\_\\_label]:text-[10.5px] [&_.el-form-item\\_\\_label]:leading-[1.3] "
+      + "[&_.el-form-item\\_\\_label]:pb-[2px] [&_.el-form-item\\_\\_label]:text-dp-tertiary "
+      + "[&_.el-input\\_\\_inner]:text-[12px] [&_.el-textarea\\_\\_inner]:text-[12px] "
+      + "[&_.el-textarea\\_\\_inner]:leading-[1.5] [&_.el-textarea\\_\\_inner]:resize-none",
+    /* 弹窗紧排文本块（设置类内容用）：小号行高收紧 */
+    "dp-dlg-text": "text-[11.5px] leading-[1.6] text-dp-secondary",
   },
 });

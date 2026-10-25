@@ -4,7 +4,7 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::state::AppState;
 
-const MAX_ENTRIES: usize = 100;
+const MAX_ENTRIES: usize = 500;
 const MAX_CHARS: usize = 4000;
 const POLL_INTERVAL_MS: u64 = 1000;
 
@@ -49,6 +49,24 @@ pub fn delete_clipboard_entry(app: AppHandle, id: String) -> Result<(), String> 
     {
         let state = app.state::<AppState>();
         state.clipboard.lock().unwrap().retain(|e| e.id != id);
+    }
+    persist(&app)
+}
+
+/// 批量删除剪贴板条目（按类型/日期条件清空时一次提交，避免逐条全量落库）。
+#[tauri::command]
+pub fn delete_clipboard_entries(app: AppHandle, ids: Vec<String>) -> Result<(), String> {
+    if ids.is_empty() {
+        return Ok(());
+    }
+    {
+        let state = app.state::<AppState>();
+        let id_set: std::collections::HashSet<&String> = ids.iter().collect();
+        state
+            .clipboard
+            .lock()
+            .unwrap()
+            .retain(|e| !id_set.contains(&e.id));
     }
     persist(&app)
 }

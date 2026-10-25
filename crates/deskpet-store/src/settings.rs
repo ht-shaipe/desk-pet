@@ -65,6 +65,12 @@ pub struct AppSettings {
     /// 聊天历史（不与远端同步）
     #[serde(default)]
     pub ai_messages: Vec<ChatMessage>,
+    /// 收藏云同步开关（鉴权 token 复用 auth_token）
+    #[serde(default)]
+    pub favorite_sync: Option<bool>,
+    /// 收藏增量拉取基线（服务端时间 serverNow）
+    #[serde(default)]
+    pub favorite_last_sync: Option<String>,
 }
 
 impl Default for AppSettings {
@@ -85,6 +91,8 @@ impl Default for AppSettings {
             ai_models: Vec::new(),
             ai_active: None,
             ai_messages: Vec::new(),
+            favorite_sync: None,
+            favorite_last_sync: None,
         }
     }
 }

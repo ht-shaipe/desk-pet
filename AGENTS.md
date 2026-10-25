@@ -48,7 +48,7 @@ uno 与 EP 的规则常为同优先级，uno 必须后加载才能在冲突时�
 
 ## 结构
 
-- `src/views/`：页面（Clipboard/Notes/Pomodoro/Chat/Account/QuickSettings/Settings/Toolbox…）。
+- `src/views/`：页面（Clipboard/Pomodoro/Stash（收藏，含便签）/Chat/Account/Settings/Toolbox…）。
 - `src/components/toolbox/`：工具注册表 `registry.ts` + `tools/` 各工具组件。
 - `src/api/`：Tauri invoke 封装；`src/types`：前后端共享类型。
 - Rust：`src-tauri/`（主程序 + `tauri_cmds/` 命令）、`crates/deskpet-os`（系统能力）、`crates/deskpet-store`（SQLite 存储）。

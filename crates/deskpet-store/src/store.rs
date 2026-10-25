@@ -3,7 +3,7 @@ use std::path::Path;
 
 use crate::Result;
 use crate::migrate::migrate_json;
-use crate::models::{ChatEntry, ClipEntry, LauncherConfig, LauncherItem, Note};
+use crate::models::{ChatEntry, ClipEntry, Favorite, LauncherConfig, LauncherItem, Note};
 
 const DB_FILE: &str = "deskpet.db";
 
@@ -13,6 +13,126 @@ fn now_ms() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0)
+}
+
+/// 与前端 FAV_CATEGORIES 对齐：“其他”的序号（19 项中的最后一项）。
+const LEGACY_NOTE_CATEGORY_OTHER: i64 = 18;
+
+/// 在给定事务内批量写收藏，返回真实写入条数。
+/// 合并策略 last-write-wins：本地 update_time 比传入新时整条跳过，
+/// 避免云端 pull / 旧导入文件静默覆盖用户已编辑、尚未推送的收藏。
+fn upsert_in_tx(tx: &rusqlite::Transaction, items: &[Favorite], now: &str) -> Result<usize> {
+    let mut count = 0usize;
+    {
+        let mut existing =
+            tx.prepare("SELECT create_time, update_time FROM favorite WHERE url = ?1")?;
+        let mut insert = tx.prepare(
+            "INSERT OR REPLACE INTO favorite
+             (url, name, description, fav_type, payload, languages, stars, forks,
+              tags, category, category_name, create_time, update_time)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+        )?;
+        for f in items {
+            let url = f.url.trim();
+            if url.is_empty() {
+                continue;
+            }
+            // 只把 QueryReturnedNoRows 当作“不存在”，真实 DB 错误必须上抛
+            let prev: Option<(String, String)> = existing
+                .query_row([url], |r| Ok((r.get(0)?, r.get(1)?)))
+                .map(Some)
+                .or_else(|e| {
+                    if e == rusqlite::Error::QueryReturnedNoRows {
+                        Ok(None)
+                    } else {
+                        Err(e)
+                    }
+                })?;
+            let (prev_create, prev_update) = match prev {
+                Some((c, u)) => (Some(c), Some(u)),
+                None => (None, None),
+            };
+            let create_time = if f.create_time.trim().is_empty() {
+                prev_create.unwrap_or_else(|| now.to_string())
+            } else {
+                f.create_time.trim().to_string()
+            };
+            let update_time = if f.update_time.trim().is_empty() {
+                now.to_string()
+            } else {
+                f.update_time.trim().to_string()
+            };
+            if let Some(local) = prev_update {
+                if !local.is_empty() && update_time < local {
+                    // 本地较新，保留本地记录
+                    continue;
+                }
+            }
+            insert.execute(rusqlite::params![
+                url,
+                f.name,
+                f.description,
+                f.fav_type,
+                f.payload,
+                serde_json::to_string(&f.languages).unwrap_or_else(|_| "[]".into()),
+                f.stars,
+                f.forks,
+                serde_json::to_string(&f.tags).unwrap_or_else(|_| "[]".into()),
+                f.category,
+                f.category_name,
+                create_time,
+                update_time,
+            ])?;
+            count += 1;
+        }
+    }
+    Ok(count)
+}
+
+/// UTC ISO8601（YYYY-MM-DDTHH:MM:SSZ），手写避免引入 chrono。
+fn iso_now() -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    iso_from_secs(secs)
+}
+
+/// Unix 秒 -> "YYYY-MM-DDTHH:MM:SSZ"（UTC）。
+fn iso_from_secs(secs: u64) -> String {
+    let (days, rem) = (secs / 86400, secs % 86400);
+    // civil_from_days（Howard Hinnant 算法）：天数 -> 年月日
+    let z = days as i64 + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let mo = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if mo <= 2 { y + 1 } else { y };
+    format!(
+        "{y:04}-{mo:02}-{d:02}T{h:02}:{m:02}:{s:02}Z",
+        h = rem / 3600,
+        m = rem % 3600 / 60,
+        s = rem % 60
+    )
+}
+
+/// Unix 毫秒 -> ISO（旧便签 updated_at 用）。
+fn iso_from_ms(ms: u64) -> String {
+    iso_from_secs(ms / 1000)
+}
+
+/// 旧便签迁入收藏时的名称：取首行非空文本，最多 24 字，空则回落「便签」。
+fn legacy_note_name(content: &str) -> String {
+    content
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .map(|l| l.chars().take(24).collect())
+        .unwrap_or_else(|| "便签".into())
 }
 
 const DDL: &str = "CREATE TABLE IF NOT EXISTS notes (
@@ -40,6 +160,21 @@ CREATE TABLE IF NOT EXISTS chat_message (
     role TEXT NOT NULL,
     content TEXT NOT NULL,
     created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS favorite (
+    url TEXT PRIMARY KEY,
+    name TEXT NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    fav_type TEXT NOT NULL DEFAULT 'repo',
+    payload TEXT NOT NULL DEFAULT '{}',
+    languages TEXT NOT NULL DEFAULT '[]',
+    stars INTEGER NOT NULL DEFAULT 0,
+    forks INTEGER NOT NULL DEFAULT 0,
+    tags TEXT NOT NULL DEFAULT '[]',
+    category INTEGER NOT NULL DEFAULT 0,
+    category_name TEXT NOT NULL DEFAULT '',
+    create_time TEXT NOT NULL DEFAULT '',
+    update_time TEXT NOT NULL DEFAULT ''
 );";
 
 /// 本地存储：SQLite（WAL），打开时建表并按需迁移旧 JSON 数据。
@@ -55,10 +190,13 @@ impl Store {
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.execute_batch(DDL)?;
         migrate_json(&conn, dir)?;
-        Ok(Self { conn })
+        // 便签功能并入收藏：启动即把 legacy notes 表迁入 favorite（幂等）
+        let store = Self { conn };
+        store.migrate_legacy_notes()?;
+        Ok(store)
     }
 
-    /// 全部便签（按写入顺序）。
+    /// 旧便签数据（迁移数据源，便签功能已并入收藏）。
     pub fn get_notes(&self) -> Result<Vec<Note>> {
         let mut stmt = self
             .conn
@@ -74,25 +212,39 @@ impl Store {
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
-    /// 全量替换便签。
-    pub fn save_notes(&self, notes: &[Note]) -> Result<()> {
-        let tx = self.conn.unchecked_transaction()?;
-        tx.execute("DELETE FROM notes", [])?;
-        {
-            let mut stmt = tx.prepare(
-                "INSERT OR REPLACE INTO notes (id, content, color, updated_at) VALUES (?1, ?2, ?3, ?4)",
-            )?;
-            for n in notes {
-                stmt.execute(rusqlite::params![
-                    n.id,
-                    n.content,
-                    n.color,
-                    n.updated_at as i64
-                ])?;
-            }
+    /// 旧便签模块退役（并入收藏便签）：一次性迁移 legacy notes 表 -> favorite。
+    /// - url = stash://note/<id>（与 stash 扩展删除约定一致）
+    /// - fav_type = note，正文/颜色载入 payload.content / payload.color
+    /// - 迁移成功后清空 notes 表 -> 幂等，重复调用返回 0
+    pub fn migrate_legacy_notes(&self) -> Result<u64> {
+        let notes = self.get_notes()?;
+        if notes.is_empty() {
+            return Ok(0);
         }
+        let items = notes
+            .iter()
+            .map(|n| Favorite {
+                url: format!("stash://note/{}", n.id),
+                name: legacy_note_name(&n.content),
+                description: String::new(),
+                fav_type: "note".into(),
+                payload: serde_json::json!({ "content": n.content, "color": n.color }).to_string(),
+                languages: vec![],
+                stars: 0,
+                forks: 0,
+                tags: vec![],
+                category: LEGACY_NOTE_CATEGORY_OTHER,
+                category_name: "其他".into(),
+                create_time: iso_from_ms(n.updated_at),
+                update_time: iso_from_ms(n.updated_at),
+            })
+            .collect::<Vec<_>>();
+        // 写入与清空旧表在同一个事务里提交，避免两提交点之间的“半迁移”窗口
+        let tx = self.conn.unchecked_transaction()?;
+        let migrated = upsert_in_tx(&tx, &items, &iso_now())? as u64;
+        tx.execute("DELETE FROM notes", [])?;
         tx.commit()?;
-        Ok(())
+        Ok(migrated)
     }
 
     /// 剪贴板历史（按更新时间倒序）。
@@ -123,6 +275,66 @@ impl Store {
             }
         }
         tx.commit()?;
+        Ok(())
+    }
+
+    /// 全部收藏（新 → 旧；create_time 为 ISO 字符串排序）。
+    pub fn get_favorites(&self) -> Result<Vec<Favorite>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT url, name, description, fav_type, payload, languages, stars, forks,
+                    tags, category, category_name, create_time, update_time
+             FROM favorite
+             ORDER BY create_time DESC, rowid DESC",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            let langs: String = row.get(5)?;
+            let tags: String = row.get(8)?;
+            Ok(Favorite {
+                url: row.get(0)?,
+                name: row.get(1)?,
+                description: row.get(2)?,
+                fav_type: row.get(3)?,
+                payload: row.get(4)?,
+                languages: serde_json::from_str(&langs).unwrap_or_default(),
+                stars: row.get(6)?,
+                forks: row.get(7)?,
+                tags: serde_json::from_str(&tags).unwrap_or_default(),
+                category: row.get(9)?,
+                category_name: row.get(10)?,
+                create_time: row.get(11)?,
+                update_time: row.get(12)?,
+            })
+        })?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    /// 批量 upsert 收藏（url 主键查重），返回实际入库条数。
+    /// 合并（导入 / 云拉取）时保留已有 create_time；update_time 为空补当前。
+    pub fn upsert_favorites(&self, items: &[Favorite]) -> Result<usize> {
+        let now = iso_now();
+        let tx = self.conn.unchecked_transaction()?;
+        let count = upsert_in_tx(&tx, items, &now)?;
+        tx.commit()?;
+        Ok(count)
+    }
+
+    /// 批量删除收藏（按 url）。
+    pub fn delete_favorites(&self, urls: &[String]) -> Result<usize> {
+        let tx = self.conn.unchecked_transaction()?;
+        let mut count = 0usize;
+        {
+            let mut stmt = tx.prepare("DELETE FROM favorite WHERE url = ?1")?;
+            for url in urls {
+                count += stmt.execute([url])?;
+            }
+        }
+        tx.commit()?;
+        Ok(count)
+    }
+
+    /// 清空全部收藏。
+    pub fn clear_favorites(&self) -> Result<()> {
+        self.conn.execute("DELETE FROM favorite", [])?;
         Ok(())
     }
 
@@ -265,17 +477,50 @@ mod tests {
     }
 
     #[test]
-    fn notes_roundtrip() {
+    fn migrates_legacy_notes_into_favorites() {
         let dir = tempfile::tempdir().unwrap();
+        // 直接把旧便签写进 notes 表（模拟旧版数据）
+        {
+            let store = Store::open(dir.path()).unwrap();
+            store
+                .conn
+                .execute(
+                    "INSERT INTO notes (id, content, color, updated_at) VALUES ('n1', '第一行\n正文内容', '#fce7f3', 1698200000000)",
+                    [],
+                )
+                .unwrap();
+        }
+
+        // open() 自动完成迁移
         let store = Store::open(dir.path()).unwrap();
-        assert!(store.get_notes().unwrap().is_empty());
+        assert!(store.get_notes().unwrap().is_empty(), "迁移后 notes 表应被清空");
 
-        store.save_notes(&sample_notes()).unwrap();
-        assert_eq!(store.get_notes().unwrap(), sample_notes());
+        let fav = store
+            .get_favorites()
+            .unwrap()
+            .into_iter()
+            .find(|f| f.url == "stash://note/n1")
+            .expect("legacy note 应迁为收藏行");
+        assert_eq!(fav.fav_type, "note");
+        assert_eq!(fav.name, "第一行");
+        assert_eq!(fav.category_name, "其他");
+        let payload: serde_json::Value = serde_json::from_str(&fav.payload).unwrap();
+        assert_eq!(payload["content"], "第一行\n正文内容");
+        assert_eq!(payload["color"], "#fce7f3");
+        assert_eq!(fav.create_time, "2023-10-25T02:13:20Z");
+        assert_eq!(fav.update_time, "2023-10-25T02:13:20Z");
 
-        // 全量替换
-        store.save_notes(&sample_notes()[..1]).unwrap();
-        assert_eq!(store.get_notes().unwrap().len(), 1);
+        // 幂等：再次打开（再迁移）返回 0 且无副作用
+        assert_eq!(Store::open(dir.path()).unwrap().migrate_legacy_notes().unwrap(), 0);
+        assert_eq!(
+            store
+                .get_favorites()
+                .unwrap()
+                .iter()
+                .filter(|f| f.url == "stash://note/n1")
+                .count(),
+            1
+        );
     }
 
     #[test]
@@ -299,6 +544,105 @@ mod tests {
         assert_eq!(loaded.len(), 2);
         assert_eq!(loaded[0].id, "c2");
         assert_eq!(loaded[1].id, "c1");
+    }
+
+    #[test]
+    fn favorite_serde_keys_are_snake_case() {
+        // Tauri 传输契约：与 TS 类型（src/types Favorite）字段名一致，
+        // 若加回 rename_all = "camelCase" 会导致前端读到 undefined。
+        let item = Favorite {
+            fav_type: "repo".into(),
+            category_name: "AI/Agent".into(),
+            create_time: "2026-10-25T00:00:00Z".into(),
+            ..Default::default()
+        };
+        let json = serde_json::to_value(&item).unwrap();
+        assert_eq!(json["fav_type"], "repo");
+        assert_eq!(json["category_name"], "AI/Agent");
+        assert_eq!(json["create_time"], "2026-10-25T00:00:00Z");
+        let back: Favorite = serde_json::from_value(json).unwrap();
+        assert_eq!(back, item);
+    }
+
+    #[test]
+    #[test]
+    fn upsert_skips_items_older_than_local() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        let favorite = |name: &str, create: &str, update: &str| Favorite {
+            url: "x://1".into(),
+            name: name.into(),
+            create_time: create.into(),
+            update_time: update.into(),
+            ..Default::default()
+        };
+        store
+            .upsert_favorites(&[favorite("local", "2026-01-01T00:00:00Z", "2026-10-01T00:00:00Z")])
+            .unwrap();
+        // 云端旧数据（update_time 更早）不应覆盖本地较新的编辑
+        store
+            .upsert_favorites(&[favorite("stale", "2026-05-01T00:00:00Z", "2026-09-01T00:00:00Z")])
+            .unwrap();
+        let list = store.get_favorites().unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].name, "local");
+        assert_eq!(list[0].update_time, "2026-10-01T00:00:00Z");
+        // 本地更旧的记录可以被更新的数据覆盖
+        store
+            .upsert_favorites(&[favorite("newer", "2026-05-01T00:00:00Z", "2026-10-20T00:00:00Z")])
+            .unwrap();
+        let list = store.get_favorites().unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].name, "newer");
+    }
+
+    #[test]
+    fn favorite_upsert_merges_delists_and_keeps_order() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+
+        let item = |url: &str, name: &str, create: &str, star: i64| Favorite {
+            url: url.into(),
+            name: name.into(),
+            fav_type: "repo".into(),
+            stars: star,
+            create_time: create.into(),
+            ..Default::default()
+        };
+        // 插入两条：a 新 b 旧
+        store
+            .upsert_favorites(&[item("b://x", "b", "2026-01-01T00:00:00Z", 1), item("a://x", "a", "2026-10-01T00:00:00Z", 5)])
+            .unwrap();
+        let list = store.get_favorites().unwrap();
+        assert_eq!(list.len(), 2);
+        assert_eq!(list[0].url, "a://x");
+        assert_eq!(list[0].stars, 5);
+
+        // 同 url 再入库（云端合并）：create_time 缺省时保留旧的
+        store
+            .upsert_favorites(&[Favorite {
+                url: "a://x".into(),
+                name: "a2".into(),
+                stars: 9,
+                ..Default::default()
+            }])
+            .unwrap();
+        let list = store.get_favorites().unwrap();
+        assert_eq!(list.len(), 2);
+        assert_eq!(list[0].name, "a2");
+        assert_eq!(list[0].create_time, "2026-10-01T00:00:00Z");
+        assert_eq!(list[0].stars, 9);
+        assert!(list[0].update_time.starts_with("20"));
+
+        // 批量删除 + 空项跳过
+        let removed = store
+            .delete_favorites(&["b://x".into(), "missing://".into()])
+            .unwrap();
+        assert_eq!(removed, 1);
+        assert_eq!(store.get_favorites().unwrap().len(), 1);
+
+        store.clear_favorites().unwrap();
+        assert!(store.get_favorites().unwrap().is_empty());
     }
 
     #[test]
@@ -328,7 +672,7 @@ mod tests {
     }
 
     #[test]
-    fn migrates_legacy_json_when_tables_empty() {
+    fn migrated_legacy_json_favorites_and_bak() {
         let dir = tempfile::tempdir().unwrap();
         // 预置旧版 JSON 数据
         std::fs::write(
@@ -338,8 +682,17 @@ mod tests {
         .unwrap();
 
         let store = Store::open(dir.path()).unwrap();
-        assert_eq!(store.get_notes().unwrap(), sample_notes());
-        // 导入成功后 JSON 备份为 .bak
+        // JSON -> notes 临时表 -> 自动并入收藏
+        let n1 = store
+            .get_favorites()
+            .unwrap()
+            .into_iter()
+            .find(|f| f.url == "stash://note/n1")
+            .expect("旧 JSON 便签应迁入收藏");
+        let payload: serde_json::Value = serde_json::from_str(&n1.payload).unwrap();
+        assert_eq!(payload["content"], "第一条");
+        assert_eq!(payload["color"], "#fef3c7");
+        // 原始 JSON 备份为 .bak
         assert!(dir.path().join("notes.json.bak").exists());
         assert!(!dir.path().join("notes.json").exists());
     }
