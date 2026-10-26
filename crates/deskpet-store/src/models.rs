@@ -11,8 +11,26 @@ pub struct Note {
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct ClipEntry {
     pub id: String,
+    /// 文本内容（kind="image" 时存 PNG 文件名）
     pub text: String,
+    /// "text" | "image"
+    #[serde(default = "default_kind")]
+    pub kind: String,
     pub updated_at: u64,
+    /// 相同内容累计捕获次数（同内容再次出现在系统剪贴板时 +1）
+    #[serde(default = "one")]
+    pub copy_count: u32,
+    /// 内容签名（kind="image" 时为 RGBA 字节的 FNV-1a 64 哈希，用于跨重启去重；文本条目为空串）
+    #[serde(default)]
+    pub sig: String,
+}
+
+fn default_kind() -> String {
+    "text".to_string()
+}
+
+fn one() -> u32 {
+    1
 }
 
 /// 收藏条目：字段名与 TS 类型 / stash 导入导出映射（lib/stash.ts）一致。

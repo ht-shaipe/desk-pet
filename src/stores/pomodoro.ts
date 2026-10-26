@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import {
   isPermissionGranted,
   requestPermission,
@@ -7,10 +7,11 @@ import {
 } from "@tauri-apps/plugin-notification";
 import { emit } from "@tauri-apps/api/event";
 import { i18n } from "@/i18n";
+import { useConfigStore } from "./config";
 
 export type PomoMode = "focus" | "short" | "long";
 
-export const MODE_MINUTES: Record<PomoMode, number> = { focus: 25, short: 5, long: 15 };
+export const DEFAULT_MINUTES: Record<PomoMode, number> = { focus: 25, short: 5, long: 15 };
 
 async function notify(title: string, body: string) {
   try {
@@ -27,13 +28,20 @@ async function notify(title: string, body: string) {
 }
 
 export const usePomodoroStore = defineStore("pomodoro", () => {
+  const config = useConfigStore();
   const mode = ref<PomoMode>("focus");
   const running = ref(false);
-  const remainingMs = ref(MODE_MINUTES.focus * 60 * 1000);
+  const remainingMs = ref(DEFAULT_MINUTES.focus * 60 * 1000);
   const focusDone = ref(0);
   const endAt = ref(0);
 
   let timer: ReturnType<typeof setInterval> | undefined;
+
+  const minutes = computed<Record<PomoMode, number>>(() => ({
+    focus: config.settings.pomo_focus_min ?? DEFAULT_MINUTES.focus,
+    short: config.settings.pomo_short_min ?? DEFAULT_MINUTES.short,
+    long: config.settings.pomo_long_min ?? DEFAULT_MINUTES.long,
+  }));
 
   const display = computed(() => {
     const totalSec = Math.max(0, Math.ceil(remainingMs.value / 1000));
@@ -41,6 +49,13 @@ export const usePomodoroStore = defineStore("pomodoro", () => {
     const s = totalSec % 60;
     return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
   });
+
+  /** 未运行时，自定义时长变更后同步剩余时间。 */
+  watch(minutes, (val) => {
+    if (!running.value) {
+      remainingMs.value = val[mode.value] * 60 * 1000;
+    }
+  }, { deep: true, immediate: true });
 
   function ensureTimer() {
     if (timer !== undefined) {
@@ -72,13 +87,17 @@ export const usePomodoroStore = defineStore("pomodoro", () => {
 
   function reset() {
     running.value = false;
-    remainingMs.value = MODE_MINUTES[mode.value] * 60 * 1000;
+    remainingMs.value = minutes.value[mode.value] * 60 * 1000;
   }
 
   function setMode(m: PomoMode) {
     mode.value = m;
     running.value = false;
-    remainingMs.value = MODE_MINUTES[m] * 60 * 1000;
+    remainingMs.value = minutes.value[m] * 60 * 1000;
+  }
+
+  function setMinutes(m: PomoMode, value: number) {
+    config.setPomoMinutes(m, value);
   }
 
   function finish() {
@@ -104,5 +123,5 @@ export const usePomodoroStore = defineStore("pomodoro", () => {
     }
   }
 
-  return { mode, running, remainingMs, focusDone, display, start, pause, reset, setMode };
+  return { mode, running, remainingMs, focusDone, display, minutes, start, pause, reset, setMode, setMinutes };
 });

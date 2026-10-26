@@ -1,6 +1,8 @@
 use arboard::ImageData;
+use image::{ImageBuffer, Rgba};
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
+use std::path::Path;
 
 use crate::{OsError, Result};
 
@@ -62,4 +64,27 @@ impl Clipboard {
 pub fn copy_text(text: &str) -> Result<()> {
     let mut board = Clipboard::new().map_err(|e| OsError::Other(e.to_string()))?;
     board.write_text(text)
+}
+
+/// 将 RGBA 图像保存为 PNG 文件。
+pub fn save_png(path: &Path, payload: &ImagePayload) -> Result<()> {
+    let img: ImageBuffer<Rgba<u8>, Vec<u8>> = ImageBuffer::from_raw(
+        payload.width,
+        payload.height,
+        payload.rgba.clone(),
+    )
+    .ok_or_else(|| OsError::Other("invalid image dimensions".into()))?;
+    img.save(path).map_err(|e| OsError::Other(e.to_string()))?;
+    Ok(())
+}
+
+/// 从 PNG 文件读取图像到 RGBA。
+pub fn read_png(path: &Path) -> Result<ImagePayload> {
+    let img = image::open(path).map_err(|e| OsError::Other(e.to_string()))?;
+    let rgba = img.to_rgba8();
+    Ok(ImagePayload {
+        width: rgba.width(),
+        height: rgba.height(),
+        rgba: rgba.into_raw(),
+    })
 }

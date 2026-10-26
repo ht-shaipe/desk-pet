@@ -98,6 +98,9 @@ watch(
       await expandWindow();
     } else {
       await collapseWindow();
+      // 就地收起可能改变了精灵位置：程序化 setPosition 不保证触发 onMoved，这里显式同步持久化
+      const pos = await win.outerPosition();
+      config.onWindowMoved({ x: pos.x, y: pos.y });
     }
   }
 );

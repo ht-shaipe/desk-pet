@@ -37,6 +37,8 @@ pub fn run() {
             tauri_cmds::clipboard_cmds::delete_clipboard_entry,
             tauri_cmds::clipboard_cmds::delete_clipboard_entries,
             tauri_cmds::clipboard_cmds::copy_to_clipboard,
+            tauri_cmds::clipboard_cmds::copy_image_to_clipboard,
+            tauri_cmds::clipboard_cmds::get_clip_image_dir,
             tauri_cmds::favorite_cmds::get_favorites,
             tauri_cmds::favorite_cmds::upsert_favorites,
             tauri_cmds::favorite_cmds::delete_favorites,

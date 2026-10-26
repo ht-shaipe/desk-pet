@@ -144,6 +144,9 @@ const DDL: &str = "CREATE TABLE IF NOT EXISTS notes (
 CREATE TABLE IF NOT EXISTS clipboard (
     id TEXT PRIMARY KEY,
     text TEXT NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'text',
+    copy_count INTEGER NOT NULL DEFAULT 1,
+    sig TEXT NOT NULL DEFAULT '',
     updated_at INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS launcher (
@@ -189,6 +192,12 @@ impl Store {
         let conn = Connection::open(dir.join(DB_FILE))?;
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.execute_batch(DDL)?;
+        // 旧表无 kind 列时补加（ALTER TABLE ADD COLUMN 幂等性：列已存在则报错，忽略）
+        let _ = conn.execute("ALTER TABLE clipboard ADD COLUMN kind TEXT NOT NULL DEFAULT 'text'", []);
+        // 旧表无 copy_count 列时补加（同上，幂等）
+        let _ = conn.execute("ALTER TABLE clipboard ADD COLUMN copy_count INTEGER NOT NULL DEFAULT 1", []);
+        // 旧表无 sig 列时补加（同上，幂等；图片内容签名）
+        let _ = conn.execute("ALTER TABLE clipboard ADD COLUMN sig TEXT NOT NULL DEFAULT ''", []);
         migrate_json(&conn, dir)?;
         // 便签功能并入收藏：启动即把 legacy notes 表迁入 favorite（幂等）
         let store = Self { conn };
@@ -251,12 +260,15 @@ impl Store {
     pub fn get_clipboard(&self) -> Result<Vec<ClipEntry>> {
         let mut stmt = self
             .conn
-            .prepare("SELECT id, text, updated_at FROM clipboard ORDER BY updated_at DESC")?;
+            .prepare("SELECT id, text, kind, copy_count, sig, updated_at FROM clipboard ORDER BY updated_at DESC")?;
         let rows = stmt.query_map([], |row| {
             Ok(ClipEntry {
                 id: row.get(0)?,
                 text: row.get(1)?,
-                updated_at: row.get::<_, i64>(2)? as u64,
+                kind: row.get(2)?,
+                copy_count: row.get::<_, i64>(3)? as u32,
+                sig: row.get(4)?,
+                updated_at: row.get::<_, i64>(5)? as u64,
             })
         })?;
         Ok(rows.filter_map(|r| r.ok()).collect())
@@ -268,10 +280,10 @@ impl Store {
         tx.execute("DELETE FROM clipboard", [])?;
         {
             let mut stmt = tx.prepare(
-                "INSERT OR REPLACE INTO clipboard (id, text, updated_at) VALUES (?1, ?2, ?3)",
+                "INSERT OR REPLACE INTO clipboard (id, text, kind, copy_count, sig, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             )?;
             for e in entries {
-                stmt.execute(rusqlite::params![e.id, e.text, e.updated_at as i64])?;
+                stmt.execute(rusqlite::params![e.id, e.text, e.kind, e.copy_count, e.sig, e.updated_at as i64])?;
             }
         }
         tx.commit()?;
@@ -531,12 +543,18 @@ mod tests {
             ClipEntry {
                 id: "c1".into(),
                 text: "旧".into(),
+                kind: "text".into(),
                 updated_at: 1000,
+                copy_count: 3,
+                sig: String::new(),
             },
             ClipEntry {
                 id: "c2".into(),
                 text: "新".into(),
+                kind: "text".into(),
                 updated_at: 2000,
+                copy_count: 1,
+                sig: String::new(),
             },
         ];
         store.save_clipboard(&entries).unwrap();
@@ -544,6 +562,7 @@ mod tests {
         assert_eq!(loaded.len(), 2);
         assert_eq!(loaded[0].id, "c2");
         assert_eq!(loaded[1].id, "c1");
+        assert_eq!(loaded[1].copy_count, 3);
     }
 
     #[test]
@@ -564,7 +583,6 @@ mod tests {
         assert_eq!(back, item);
     }
 
-    #[test]
     #[test]
     fn upsert_skips_items_older_than_local() {
         let dir = tempfile::tempdir().unwrap();

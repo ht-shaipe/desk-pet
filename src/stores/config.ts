@@ -54,6 +54,14 @@ function normalizeAppName(value: string | null | undefined): string {
   return trimmed.length > 0 ? trimmed : DEFAULT_APP_NAME;
 }
 
+/** 归一化番茄钟时长：钳制到 1-120 分钟。 */
+function clampPomoMin(value: number | null | undefined): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return null;
+  }
+  return Math.min(120, Math.max(1, Math.round(value)));
+}
+
 /** 生成模型配置 id（时间戳 + 随机后缀，足够本地唯一）。 */
 function genAiModelId(): string {
   return `m-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -329,6 +337,15 @@ export const useConfigStore = defineStore("config", () => {
     schedulePersist();
   }
 
+  /** 设置番茄钟时长（分钟），钳制到 1-120。 */
+  function setPomoMinutes(mode: "focus" | "short" | "long", value: number) {
+    const clamped = Math.min(120, Math.max(1, Math.round(value)));
+    if (mode === "focus") settings.value.pomo_focus_min = clamped;
+    else if (mode === "short") settings.value.pomo_short_min = clamped;
+    else settings.value.pomo_long_min = clamped;
+    schedulePersist();
+  }
+
   async function init() {
     platform.value = await getPlatform();
     const s = await getSettings();
@@ -351,6 +368,9 @@ export const useConfigStore = defineStore("config", () => {
       ai_active: typeof s.ai_active === "string" ? s.ai_active : null,
       favorite_sync: s.favorite_sync == null ? false : Boolean(s.favorite_sync),
       favorite_last_sync: s.favorite_last_sync ?? null,
+      pomo_focus_min: clampPomoMin(s.pomo_focus_min),
+      pomo_short_min: clampPomoMin(s.pomo_short_min),
+      pomo_long_min: clampPomoMin(s.pomo_long_min),
     };
     setAppLocale(locale);
     applyTheme(theme);
@@ -384,5 +404,6 @@ export const useConfigStore = defineStore("config", () => {
     removeAiModel,
     setActiveAiModel,
     setShowDock,
+    setPomoMinutes,
   };
 });

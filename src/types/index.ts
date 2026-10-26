@@ -45,6 +45,10 @@ export interface AppSettings {
   favorite_sync?: boolean | null;
   /** 收藏增量拉取基线（服务端时间） */
   favorite_last_sync?: string | null;
+  /** 番茄钟自定义时长（分钟），缺省用默认值 */
+  pomo_focus_min?: number | null;
+  pomo_short_min?: number | null;
+  pomo_long_min?: number | null;
 }
 
 export type FavType = "repo" | "article" | "video" | "product" | "social" | "image" | "bookmark" | "note";
@@ -92,7 +96,10 @@ export interface AppEntry {
 export interface ClipEntry {
   id: string;
   text: string;
+  kind: string;
   updated_at: number;
+  /** 相同内容累计复制次数 */
+  copy_count: number;
 }
 
 export interface ImagePayload {

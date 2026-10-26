@@ -3,11 +3,12 @@ import { computed, onMounted, ref, type Component } from "vue";
 import { useI18n } from "vue-i18n";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { open as openFileDialog, save as saveFileDialog } from "@tauri-apps/plugin-dialog";
-import { CaretBottom, CaretRight, Close, Plus, Setting, MagicStick, Monitor, Cpu, Grid, SetUp, Connection, Coin, Link, Lock, Tickets, Memo, DataAnalysis, Cellphone, Platform, Aim, Film, Key, Files, More, Collection, CollectionTag, Document, VideoCamera, Goods, ChatDotRound, Picture } from "@element-plus/icons-vue";
+import { CaretBottom, CaretRight, Close, Plus, Setting, MagicStick, Monitor, Cpu, Grid, SetUp, Connection, Coin, Link, Lock, Tickets, Memo, DataAnalysis, Cellphone, Platform, Aim, Film, Key, Files, More, Collection, CollectionTag, CopyDocument, Document, VideoCamera, Goods, ChatDotRound, Picture } from "@element-plus/icons-vue";
 import { useFavoritesStore } from "@/stores/favorites";
 import { useConfigStore } from "@/stores/config";
 import { autoPullFavorites, pullFavorites, pushFavorites, refreshRepoStats } from "@/composables/useStashCloud";
 import { launchItem } from "@/api/launcher";
+import { copyToClipboard } from "@/api/clipboard";
 import {
   buildFavoriteFromUrl,
   exportFavorites,
@@ -272,6 +273,20 @@ async function onRemove(item: Favorite) {
   }
 }
 
+/** 悬停复制：便签复制正文，其余复制链接。 */
+async function onCopyFav(item: Favorite) {
+  const content = isNoteItem(item) ? parsePayload(item.payload).content ?? "" : item.url;
+  if (!content.trim()) {
+    return;
+  }
+  try {
+    await copyToClipboard(content);
+    ElMessage.success(t("stash.copied"));
+  } catch (e) {
+    ElMessage.error(t("stash.copyFail", { err: String(e) }));
+  }
+}
+
 // ---------- 添加 / 编辑 ----------
 
 const editVisible = ref(false);
@@ -412,6 +427,7 @@ function firstLineName(content: string): string {
 
 const noteVisible = ref(false);
 const noteEditing = ref<Favorite | null>(null);
+const noteAdding = ref(false);
 
 /** 笔记正文双向绑定（payload JSON 的 content 字段）。 */
 const notePayloadText = computed<string>({
@@ -438,7 +454,29 @@ const noteColor = computed<string>({
 });
 
 function openNoteEditor(item: Favorite) {
+  noteAdding.value = false;
   noteEditing.value = { ...item };
+  noteVisible.value = true;
+}
+
+function openAddNote() {
+  noteAdding.value = true;
+  const now = isoNow();
+  noteEditing.value = {
+    url: "",
+    name: "",
+    description: "",
+    fav_type: "note",
+    payload: JSON.stringify({ content: "", color: NOTE_DEFAULT_COLOR }),
+    languages: [],
+    stars: 0,
+    forks: 0,
+    tags: [],
+    category: FAV_CATEGORIES.indexOf("其他"),
+    category_name: "其他",
+    create_time: now,
+    update_time: now,
+  };
   noteVisible.value = true;
 }
 
@@ -455,6 +493,12 @@ async function saveNote() {
   }
   if (typeof payload.color !== "string") {
     payload.color = noteColorOf(item);
+  }
+  if (noteAdding.value) {
+    if (!item.name.trim()) {
+      item.name = firstLineName(payload.content);
+    }
+    item.url = `stash://note/n-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
   }
   try {
     await store.upsert({ ...item, payload: JSON.stringify(payload), update_time: isoNow() });
@@ -684,11 +728,25 @@ onMounted(() => {
           </span>
         </el-option>
       </el-select>
+      <!--
+        悬停提示统一用 dp-tip 气泡：原生 title 走系统毛玻璃提示，延迟高、半透明且会压在工具栏上。
+        这里必须让气泡挂到 body（el-tooltip 默认行为，不能加 :teleported="false"）：
+        原位渲染时气泡会作为 .view-toolbar（flex 行）的子节点插入，Chrome 会重算这一行的主轴分配，
+        导致左边的搜索框宽度在 hover 瞬间跳变（实测 200 → 212），移开又跳回来。
+      -->
+      <el-tooltip
+        :content="t('stash.addNote')"
+        placement="bottom"
+        :show-after="300"
+        effect="light"
+        popper-class="dp-tip"
+      >
+        <el-button size="small" text class="!p-0" :icon="Memo" @click="openAddNote" />
+      </el-tooltip>
       <el-tooltip
         :content="t('stash.add')"
         placement="bottom"
         :show-after="300"
-        :teleported="false"
         effect="light"
         popper-class="dp-tip"
       >
@@ -723,7 +781,7 @@ onMounted(() => {
         >
           <span
             v-if="g.iconSvg"
-            class="inline-flex items-center justify-center w-[13px] h-[13px] text-dp-tertiary [&>svg]:w-[13px] [&>svg]:h-[13px]"
+            class="inline-flex items-center justify-center w-[13px] h-[13px] text-dp-tertiary [&_svg]:w-[13px] [&_svg]:h-[13px]"
             v-html="g.iconSvg"
           />
           <!-- 分组头图标统一灰阶（平台 logo 本身单色，类型彩图标会与 SVG 组不一致） -->
@@ -759,6 +817,13 @@ onMounted(() => {
                 {{ entry.name || entry.url }}
               </span>
               <span class="shrink-0 text-[10px] text-dp-tertiary">{{ formatTime(isNoteItem(entry) ? entry.update_time : entry.create_time) }}</span>
+              <span
+                class="shrink-0 inline-flex items-center p-[3px] rounded-[5px] opacity-0 transition-opacity duration-150 ease-[ease] [.fav-card:hover_&]:opacity-100 hover:text-dp-accent hover:bg-dp-tag-soft"
+                :title="t('stash.copy')"
+                @click.stop="onCopyFav(entry)"
+              >
+                <el-icon :size="12"><CopyDocument /></el-icon>
+              </span>
               <span
                 class="shrink-0 inline-flex items-center p-[3px] rounded-[5px] opacity-0 transition-opacity duration-150 ease-[ease] [.fav-card:hover_&]:opacity-100 hover:text-[#f56c6c] hover:bg-dp-danger-soft"
                 :title="t('common.delete')"
@@ -810,39 +875,42 @@ onMounted(() => {
 
     <!-- 添加 / 编辑 -->
     <el-dialog v-model="editVisible" :title="t('stash.addTitle')" width="352" :teleported="false" class="dp-dialog">
-      <el-form v-if="editing" label-position="top" size="small" class="dp-form">
-        <el-form-item :label="t('stash.fieldUrl')">
-          <el-input v-model="editing.url" :placeholder="t('stash.urlPh')" @input="onUrlInput" />
-        </el-form-item>
-        <el-form-item :label="t('stash.fieldName')">
-          <el-input v-model="editing.name" :placeholder="t('stash.namePh')" />
-        </el-form-item>
-        <div class="grid grid-cols-2 gap-x-2">
-          <el-form-item :label="t('stash.fieldType')">
-            <el-select v-model="editing.fav_type" class="w-full" :teleported="false" @change="typeTouched = true">
-              <el-option v-for="tp in FAV_TYPES" :key="tp.value" :value="tp.value" :label="typeLabel(tp.value)" />
-            </el-select>
+      <!-- 弹窗内容统一交给 el-scrollbar（限高由 main.css 的 .el-dialog 统一约束） -->
+      <el-scrollbar class="dp-scroll pr-1">
+        <el-form v-if="editing" label-position="top" size="small" class="dp-form">
+          <el-form-item :label="t('stash.fieldUrl')">
+            <el-input v-model="editing.url" :placeholder="t('stash.urlPh')" @input="onUrlInput" />
           </el-form-item>
-          <el-form-item :label="t('stash.fieldCategory')">
-            <el-select v-model="editing.category_name" class="w-full" :teleported="false">
-              <el-option v-for="c in FAV_CATEGORIES" :key="c" :value="c" :label="c">
-                <span class="inline-flex items-center gap-1.5">
-                  <el-icon :size="11" :style="{ color: categoryTint(c) }">
-                    <component :is="categoryIcon(c)" />
-                  </el-icon>
-                  {{ c }}
-                </span>
-              </el-option>
-            </el-select>
+          <el-form-item :label="t('stash.fieldName')">
+            <el-input v-model="editing.name" :placeholder="t('stash.namePh')" />
           </el-form-item>
-        </div>
-        <el-form-item :label="editingIsNote ? t('stash.notePh') : t('stash.fieldDescription')">
-          <el-input v-model="editing.description" type="textarea" :rows="2" :placeholder="editingIsNote ? t('stash.notePh') : t('stash.descPh')" />
-        </el-form-item>
-        <el-form-item :label="t('stash.fieldTags')">
-          <el-input v-model="tagsText" :placeholder="t('stash.tagsPh')" />
-        </el-form-item>
-      </el-form>
+          <div class="grid grid-cols-2 gap-x-2">
+            <el-form-item :label="t('stash.fieldType')">
+              <el-select v-model="editing.fav_type" class="w-full" :teleported="false" @change="typeTouched = true">
+                <el-option v-for="tp in FAV_TYPES" :key="tp.value" :value="tp.value" :label="typeLabel(tp.value)" />
+              </el-select>
+            </el-form-item>
+            <el-form-item :label="t('stash.fieldCategory')">
+              <el-select v-model="editing.category_name" class="w-full" :teleported="false">
+                <el-option v-for="c in FAV_CATEGORIES" :key="c" :value="c" :label="c">
+                  <span class="inline-flex items-center gap-1.5">
+                    <el-icon :size="11" :style="{ color: categoryTint(c) }">
+                      <component :is="categoryIcon(c)" />
+                    </el-icon>
+                    {{ c }}
+                  </span>
+                </el-option>
+              </el-select>
+            </el-form-item>
+          </div>
+          <el-form-item :label="editingIsNote ? t('stash.notePh') : t('stash.fieldDescription')">
+            <el-input v-model="editing.description" type="textarea" :rows="2" :placeholder="editingIsNote ? t('stash.notePh') : t('stash.descPh')" />
+          </el-form-item>
+          <el-form-item :label="t('stash.fieldTags')">
+            <el-input v-model="tagsText" :placeholder="t('stash.tagsPh')" />
+          </el-form-item>
+        </el-form>
+      </el-scrollbar>
       <template #footer>
         <el-button size="small" @click="editVisible = false">{{ t("common.cancel") }}</el-button>
         <el-button size="small" type="primary" @click="saveEdit">{{ t("common.confirm") }}</el-button>
@@ -850,31 +918,33 @@ onMounted(() => {
     </el-dialog>
 
     <!-- 便签编辑器 -->
-    <el-dialog v-model="noteVisible" :title="t('stash.editNote')" width="352" :teleported="false" class="dp-dialog">
-      <template v-if="noteEditing">
-        <div class="flex items-center gap-1.5 mb-2">
-          <el-input v-model="noteEditing.name" size="small" :placeholder="t('stash.namePh')" class="flex-1 min-w-0" />
-          <!-- 色板：沿用旧便签模块五色 -->
-          <span
-            v-for="c in NOTE_PALETTE"
-            :key="c"
-            class="w-3.5 h-3.5 rounded-full cursor-pointer shrink-0 transition-transform duration-150 ease-[ease] hover:scale-110"
-            :class="noteColor === c ? 'border-2 border-dp-accent' : 'border border-dp-dot-border'"
-            :style="{ background: c }"
-            :title="c"
-            @click="noteColor = c"
+    <el-dialog v-model="noteVisible" :title="noteAdding ? t('stash.addNote') : t('stash.editNote')" width="352" :teleported="false" class="dp-dialog">
+      <el-scrollbar class="dp-scroll pr-1">
+        <template v-if="noteEditing">
+          <div class="flex items-center gap-1.5 mb-2">
+            <el-input v-model="noteEditing.name" size="small" :placeholder="t('stash.namePh')" class="flex-1 min-w-0" />
+            <!-- 色板：沿用旧便签模块五色 -->
+            <span
+              v-for="c in NOTE_PALETTE"
+              :key="c"
+              class="w-3.5 h-3.5 rounded-full cursor-pointer shrink-0 transition-transform duration-150 ease-[ease] hover:scale-110"
+              :class="noteColor === c ? 'border-2 border-dp-accent' : 'border border-dp-dot-border'"
+              :style="{ background: c }"
+              :title="c"
+              @click="noteColor = c"
+            />
+          </div>
+          <el-input
+            v-model="notePayloadText"
+            type="textarea"
+            :rows="8"
+            :placeholder="t('stash.notePh')"
+            class="[&_.el-textarea\_\_inner]:text-[12px] [&_.el-textarea\_\_inner]:font-mono"
           />
-        </div>
-        <el-input
-          v-model="notePayloadText"
-          type="textarea"
-          :rows="8"
-          :placeholder="t('stash.notePh')"
-          class="[&_.el-textarea\_\_inner]:text-[12px] [&_.el-textarea\_\_inner]:font-mono"
-        />
-      </template>
+        </template>
+      </el-scrollbar>
       <template #footer>
-        <el-button size="small" type="danger" text @click="deleteNote">{{ t("common.delete") }}</el-button>
+        <el-button v-if="!noteAdding" size="small" type="danger" text @click="deleteNote">{{ t("common.delete") }}</el-button>
         <el-button size="small" @click="noteVisible = false">{{ t("common.cancel") }}</el-button>
         <el-button size="small" type="primary" @click="saveNote">{{ t("common.confirm") }}</el-button>
       </template>
@@ -882,29 +952,31 @@ onMounted(() => {
 
     <!-- 收藏设置（云同步 / 仓库刷新 / 存储概况） -->
     <el-dialog v-model="syncVisible" :title="t('stash.settings')" width="352" :teleported="false" class="dp-dialog">
-      <div class="dp-dlg-text flex flex-col gap-3">
-        <div class="flex items-center justify-between">
-          <span>{{ t("stash.cloudSync") }}</span>
-          <el-switch v-model="syncModel" size="small" />
+      <el-scrollbar class="dp-scroll pr-1">
+        <div class="dp-dlg-text flex flex-col gap-3">
+          <div class="flex items-center justify-between">
+            <span>{{ t("stash.cloudSync") }}</span>
+            <el-switch v-model="syncModel" size="small" />
+          </div>
+          <div class="text-[11px] leading-[1.6]">
+            <template v-if="config.settings.auth_token">
+              <span class="text-dp-tertiary">{{ t("stash.account", { user: config.settings.auth_user || "?" }) }}</span>
+            </template>
+            <template v-else>
+              <span class="text-dp-tertiary">{{ t("stash.notLogged") }}</span>
+            </template>
+          </div>
+          <div class="grid grid-cols-1 gap-2">
+            <el-button size="small" :loading="syncing" @click="onPush">{{ t("stash.menuPush") }}</el-button>
+            <el-button size="small" :loading="pulling" @click="onPull">{{ t("stash.menuPull") }}</el-button>
+            <el-button size="small" :loading="refreshing" @click="onRefreshStats">{{ t("stash.menuRefresh") }}</el-button>
+          </div>
+          <div class="text-[10.5px] text-dp-tertiary leading-[1.6]">
+            <div>{{ t("stash.localStats", { n: store.entries.length }) }}</div>
+            <div>{{ t("stash.lastSync", { time: lastSyncText }) }}</div>
+          </div>
         </div>
-        <div class="text-[11px] leading-[1.6]">
-          <template v-if="config.settings.auth_token">
-            <span class="text-dp-tertiary">{{ t("stash.account", { user: config.settings.auth_user || "?" }) }}</span>
-          </template>
-          <template v-else>
-            <span class="text-dp-tertiary">{{ t("stash.notLogged") }}</span>
-          </template>
-        </div>
-        <div class="grid grid-cols-1 gap-2">
-          <el-button size="small" :loading="syncing" @click="onPush">{{ t("stash.menuPush") }}</el-button>
-          <el-button size="small" :loading="pulling" @click="onPull">{{ t("stash.menuPull") }}</el-button>
-          <el-button size="small" :loading="refreshing" @click="onRefreshStats">{{ t("stash.menuRefresh") }}</el-button>
-        </div>
-        <div class="text-[10.5px] text-dp-tertiary leading-[1.6]">
-          <div>{{ t("stash.localStats", { n: store.entries.length }) }}</div>
-          <div>{{ t("stash.lastSync", { time: lastSyncText }) }}</div>
-        </div>
-      </div>
+      </el-scrollbar>
     </el-dialog>
   </div>
 </template>

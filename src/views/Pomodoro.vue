@@ -1,11 +1,17 @@
 <script setup lang="ts">
 import { useI18n } from "vue-i18n";
-import { Refresh, VideoPause, VideoPlay } from "@element-plus/icons-vue";
+import { Refresh, Setting, VideoPause, VideoPlay } from "@element-plus/icons-vue";
 import { usePomodoroStore, type PomoMode } from "@/stores/pomodoro";
 
 const { t } = useI18n();
 const store = usePomodoroStore();
 const modes: PomoMode[] = ["focus", "short", "long"];
+
+function onMinutesChange(m: PomoMode, v: number | undefined) {
+  if (typeof v === "number" && v > 0) {
+    store.setMinutes(m, v);
+  }
+}
 </script>
 
 <template>
@@ -15,7 +21,7 @@ const modes: PomoMode[] = ["focus", "short", "long"];
       <span class="text-xs text-dp-tertiary">{{ t("pomodoro.focusCount", { n: store.focusDone }) }}</span>
     </div>
     <div class="flex-1 flex flex-col items-center justify-center gap-[18px]">
-      <div class="flex gap-1.5">
+      <div class="flex gap-1.5 items-center">
         <button
           v-for="m in modes"
           :key="m"
@@ -25,6 +31,29 @@ const modes: PomoMode[] = ["focus", "short", "long"];
         >
           {{ t(`pomodoro.mode.${m}`) }}
         </button>
+        <el-popover placement="bottom" :width="210" trigger="click">
+          <template #reference>
+            <button
+              class="border border-dp-card-border bg-dp-card-bg text-dp-muted w-[26px] h-[26px] rounded-full flex items-center justify-center cursor-pointer transition-all duration-150 ease-[ease] hover:text-dp-primary"
+            >
+              <el-icon :size="12"><Setting /></el-icon>
+            </button>
+          </template>
+          <div class="flex flex-col gap-2.5">
+            <div v-for="m in modes" :key="m" class="flex items-center justify-between gap-2">
+              <span class="text-xs text-dp-muted">{{ t(`pomodoro.mode.${m}`) }}</span>
+              <el-input-number
+                :model-value="store.minutes[m]"
+                :min="1"
+                :max="120"
+                size="small"
+                controls-position="right"
+                class="w-[110px]"
+                @change="(v: number | undefined) => onMinutesChange(m, v)"
+              />
+            </div>
+          </div>
+        </el-popover>
       </div>
       <div
         class="text-[56px] font-bold tabular-nums tracking-[2px] leading-none"

@@ -974,6 +974,7 @@ dependencies = [
  "arboard",
  "base64 0.22.1",
  "fs4",
+ "image",
  "plist",
  "reqwest 0.12.28",
  "serde",

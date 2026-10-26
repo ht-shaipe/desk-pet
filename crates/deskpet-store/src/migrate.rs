@@ -33,8 +33,8 @@ pub fn migrate_json(conn: &Connection, dir: &Path) -> Result<()> {
         let tx = conn.unchecked_transaction()?;
         for e in &list {
             tx.execute(
-                "INSERT OR REPLACE INTO clipboard (id, text, updated_at) VALUES (?1, ?2, ?3)",
-                rusqlite::params![e.id, e.text, e.updated_at as i64],
+                "INSERT OR REPLACE INTO clipboard (id, text, kind, updated_at) VALUES (?1, ?2, ?3, ?4)",
+                rusqlite::params![e.id, e.text, e.kind, e.updated_at as i64],
             )?;
         }
         tx.commit()?;

@@ -21,6 +21,8 @@ interface SavedSize {
 
 let savedPetPos: SavedPos | null = null;
 let savedPanelSize: SavedSize | null = null;
+/** 展开时面板的落点（物理像素）；收起时与当前位置对比判断是否拖动过。 */
+let expandedPanelPos: SavedPos | null = null;
 
 /** 展开态记录用户手动调整后的面板尺寸（物理像素），下次展开沿用。 */
 export function rememberPanelSize(size: SavedSize): void {
@@ -83,6 +85,7 @@ export async function expandWindow(): Promise<void> {
   }
 
   await win.setPosition(new PhysicalPosition(x, y));
+  expandedPanelPos = { x, y };
   await win.setSize(new PhysicalSize(w, h));
   await win.setMinSize(
     new PhysicalSize(Math.round(MIN_PANEL_WIDTH * sf), Math.round(MIN_PANEL_HEIGHT * sf))
@@ -93,13 +96,28 @@ export async function expandWindow(): Promise<void> {
   await win.setFocus();
 }
 
-/** 展开态 -> 折叠态：恢复展开前记录的精灵位置，并还原为不可调整的小窗。 */
+/** 展开态 -> 折叠态：面板被拖动过就地收起（精灵显示在面板最新位置的左上角），
+ *  未拖动则恢复展开前记录的精灵位置；还原为不可调整的小窗。 */
 export async function collapseWindow(): Promise<void> {
   const sf = await scaleFactor();
   const size = Math.round(PET_SIZE * sf);
   // 先解除最小尺寸并缩小窗口，最后才锁定 resizable（macOS 上先锁再缩可能失效）
   await win.setMinSize(null);
-  if (savedPetPos) {
+  const pos = await win.outerPosition();
+  // 与展开落点对比（1px 容差吸收系统取整误差）：不一致说明用户拖动过面板
+  const dragged =
+    expandedPanelPos !== null &&
+    (Math.abs(pos.x - expandedPanelPos.x) > 1 || Math.abs(pos.y - expandedPanelPos.y) > 1);
+  if (dragged) {
+    let x = pos.x;
+    let y = pos.y;
+    const mon = await currentMonitor();
+    if (mon) {
+      x = Math.min(Math.max(x, mon.position.x), mon.position.x + Math.max(0, mon.size.width - size));
+      y = Math.min(Math.max(y, mon.position.y), mon.position.y + Math.max(0, mon.size.height - size));
+    }
+    await win.setPosition(new PhysicalPosition(x, y));
+  } else if (savedPetPos) {
     await win.setPosition(new PhysicalPosition(savedPetPos.x, savedPetPos.y));
   }
   await win.setSize(new PhysicalSize(size, size));

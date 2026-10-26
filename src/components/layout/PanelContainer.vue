@@ -23,11 +23,11 @@ const { t } = useI18n();
 
 const tabs = computed<Array<{ view: PanelView; label: string; icon: Component }>>(() => [
   { view: "chat", label: t("tabs.chat"), icon: ChatDotRound },
-  { view: "launcher", label: t("tabs.launcher"), icon: Grid },
-  { view: "pomodoro", label: t("tabs.pomodoro"), icon: Timer },
   { view: "clipboard", label: t("tabs.clipboard"), icon: CopyDocument },
   { view: "stash", label: t("tabs.stash"), icon: Star },
   { view: "toolbox", label: t("tabs.toolbox"), icon: Suitcase },
+  { view: "launcher", label: t("tabs.launcher"), icon: Grid },
+  { view: "pomodoro", label: t("tabs.pomodoro"), icon: Timer },
   { view: "account", label: t("tabs.account"), icon: User },
   { view: "settings", label: t("tabs.settings"), icon: Setting },
 ]);

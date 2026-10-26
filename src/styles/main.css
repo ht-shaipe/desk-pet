@@ -60,6 +60,10 @@
   --el-text-color-disabled: #b6bfcc;
   --el-disabled-bg-color: #f4f6fa;
   --el-disabled-border-color: #dde3ec;
+  /* 弹窗/确认框圆角与宽度（默认 2px/420px：直角且宽过面板窗口） */
+  --el-dialog-border-radius: 14px;
+  --el-messagebox-width: 340px;
+  --el-messagebox-border-radius: 14px;
 }
 
 html.dark {
@@ -131,6 +135,68 @@ body::-webkit-scrollbar,
   width: 0;
   height: 0;
   display: none;
+}
+
+/* ---------- 弹窗遮罩裁剪（保持窗口透明边距，整体圆角外观） ----------
+ * 窗口四周是透明边距，面板卡片 = inset-x-2 top-[42px] bottom-2 rounded-2xl（PanelContainer.vue）。
+ * EP 遮罩（.el-overlay）是全视口 fixed 层，打开弹窗时会把透明边距涂成 rgba(0,0,0,.5) 的直角矩形，
+ * 整个应用看上去就是一个没有圆角的暗色方框。这里把遮罩裁剪到卡片圆角矩形内；
+ * 弹窗位置由下方 .el-dialog 限高规则约束（顶部外边距保底 50px），始终落在裁剪区内。
+ * 若调整 PanelContainer 卡片的 inset 或圆角，需同步修改这里。 */
+.el-overlay {
+  clip-path: inset(42px 8px 8px 8px round 16px);
+}
+
+/* ---------- 弹窗统一限高（溢出交给内容区的 el-scrollbar） ----------
+ * EP 默认 .el-dialog 不限高，只靠 margin: 15vh auto 50px 定位：面板窗口只有 ~588px 高，
+ * 表单稍长就顶出视口 —— 遮罩滚动容器 .el-overlay-dialog 冒出原生滚动条，
+ * 弹窗底部也被上面 .el-overlay 的 clip-path 切成直角（圆角看不见）。
+ * 这里统一限高：弹窗必须落在遮罩裁剪区（上 42px / 下 8px）内，顶部外边距用 clamp 保底 50px
+ * （避开卡片上缘圆角区），主体改 flex 列：header/footer 固定，body 撑满剩余高度并 min-h-0，
+ * 溢出交给各弹窗内容自己包的 <el-scrollbar>（快捷类 dp-scroll）。 */
+:root {
+  --dp-dialog-mt: clamp(50px, 12vh, 88px);
+}
+
+.el-dialog {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - var(--dp-dialog-mt) - 12px);
+  margin: var(--dp-dialog-mt) auto 12px;
+}
+
+.el-dialog.is-fullscreen {
+  max-height: none;
+  margin: 0;
+}
+
+.el-dialog__header,
+.el-dialog__footer {
+  flex-shrink: 0;
+}
+
+.el-dialog__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* body 的高度由 flex 列容器 + max-height 夹取得出，Chrome 认为它对百分比子元素 indefinite，
+ * EP 自带的 .el-scrollbar / .el-scrollbar__wrap 的 height:100% 会退化成 auto（=内容高），
+ * 溢出部分只能被 .el-dialog 的 overflow:hidden 硬裁。所以滚动链路整体改 flex 撑满。 */
+.el-dialog__body > .el-scrollbar {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.el-dialog__body > .el-scrollbar > .el-scrollbar__wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
 }
 
 body {

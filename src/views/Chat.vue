@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { Delete, Edit, Plus, Position, VideoPause } from "@element-plus/icons-vue";
+import { ArrowRight, Delete, Edit, Plus, Position, VideoPause } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { useConfigStore } from "@/stores/config";
 import { isModelReady, streamChatCompletion } from "@/api/ai";
@@ -60,6 +60,7 @@ onMounted(async () => {
   } catch (err) {
     console.error("[desk-pet] 聊天记录加载失败:", err);
   }
+  scrollToEnd();
 });
 
 /** 把流式完成的回复写入 SQLite；失败时提示（内容已无法恢复）。 */
@@ -266,6 +267,34 @@ async function removeModel(model: AiModel) {
     showModels.value = false;
   }
 }
+
+/** ---------- Vortex 推广位（AI API 中转服务） ---------- */
+const VORTEX_URL = "https://ht-shaipe.github.io/vortex/"; // 官网落地页，点击推广卡即在系统浏览器打开
+const VORTEX_API_URL = ""; // 中转接口地址，补充后显示"一键填入"按钮
+
+/** 系统浏览器打开 Vortex 官网。 */
+function openVortex() {
+  if (!VORTEX_URL) {
+    return;
+  }
+  void launchItem({
+    id: "vortex-ad",
+    name: "Vortex",
+    icon: "",
+    item_type: "url",
+    value: VORTEX_URL,
+    color: "",
+  }).catch(() => undefined);
+}
+
+/** 一键填入 Vortex 中转接口地址（名称为空时顺便预填）。 */
+function fillVortex() {
+  form.value.base_url = VORTEX_API_URL;
+  if (!form.value.name.trim()) {
+    form.value.name = "Vortex";
+  }
+  ElMessage.success(t("chat.vortexFilled"));
+}
 </script>
 
 <template>
@@ -376,56 +405,94 @@ async function removeModel(model: AiModel) {
     <el-dialog
       v-model="showModels"
       :title="editing ? t('chat.editModel') : t('chat.addModel')"
-      width="320px"
-      class="max-w-[calc(100vw-24px)] [&_.el-dialog\_\_body]:max-h-[calc(100vh-140px)] [&_.el-dialog\_\_body]:overflow-y-auto [&_.el-dialog\_\_body]:pt-2.5"
+      width="340px"
+      class="max-w-[calc(100vw-24px)] [&_.el-dialog\_\_body]:pt-3"
       append-to-body
     >
-      <el-scrollbar max-height="110px" class="pr-1">
-        <div
-          v-for="m in models"
-          :key="m.id"
-          class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-dp-btn-bg"
+      <!-- 弹窗内容统一交给 el-scrollbar（限高由 main.css 的 .el-dialog 统一约束） -->
+      <el-scrollbar class="dp-scroll pr-1">
+        <div class="mb-1 text-[11px] font-semibold text-dp-secondary">{{ t("chat.myModels") }}</div>
+        <el-scrollbar max-height="110px" class="pr-1">
+          <div
+            v-for="m in models"
+            :key="m.id"
+            class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-dp-btn-bg"
+          >
+            <div class="flex flex-col min-w-0 mr-auto">
+              <span
+                class="overflow-hidden text-ellipsis whitespace-nowrap text-[13px]"
+                :class="m.id === activeId ? 'text-dp-accent font-semibold' : 'text-dp-primary'"
+              >{{ m.name || m.model }}</span>
+              <span class="overflow-hidden text-ellipsis whitespace-nowrap text-[11px] text-dp-muted">
+                {{ m.model }}
+              </span>
+            </div>
+            <div class="inline-flex items-center shrink-0 [&_.el-button+_.el-button]:ml-0.5">
+              <el-button v-if="m.id !== activeId" size="small" text type="primary" @click="config.setActiveAiModel(m.id)">
+                {{ t("chat.use") }}
+              </el-button>
+              <el-button size="small" text :icon="Edit" @click="openEdit(m)" />
+              <el-button size="small" text :icon="Delete" @click="removeModel(m)" />
+            </div>
+          </div>
+          <el-empty v-if="models.length === 0" :description="t('chat.emptyModels')" :image-size="50" />
+        </el-scrollbar>
+        <el-divider class="my-3" />
+        <el-form
+          label-width="62px"
+          class="[&_.el-form-item]:mb-2.5 [&_.el-form-item]:items-center [&_.el-form-item\_\_label]:p-0 [&_.el-form-item\_\_label]:pr-2 [&_.el-form-item\_\_label]:text-[12px] [&_.el-form-item\_\_label]:font-medium [&_.el-form-item\_\_label]:leading-none [&_.el-form-item\_\_label]:text-dp-secondary"
+          @submit.prevent
         >
-          <div class="flex flex-col min-w-0 mr-auto">
-            <span
-              class="overflow-hidden text-ellipsis whitespace-nowrap text-[13px]"
-              :class="m.id === activeId ? 'text-dp-accent font-semibold' : 'text-dp-primary'"
-            >{{ m.name || m.model }}</span>
-            <span class="overflow-hidden text-ellipsis whitespace-nowrap text-[11px] text-dp-muted">
-              {{ m.model }}
+          <el-form-item :label="t('chat.modelName')">
+            <el-input v-model="form.name" :placeholder="t('chat.modelNamePh')" />
+          </el-form-item>
+          <el-form-item :label="t('chat.baseUrl')">
+            <el-input v-model="form.base_url" :placeholder="t('chat.baseUrlPh')" clearable />
+          </el-form-item>
+          <el-form-item :label="t('chat.apiKey')">
+            <el-input v-model="form.api_key" type="password" show-password :placeholder="t('chat.apiKeyPh')" />
+          </el-form-item>
+          <el-form-item :label="t('chat.modelId')">
+            <el-input v-model="form.model" :placeholder="t('chat.modelIdPh')" />
+          </el-form-item>
+          <div class="flex justify-end gap-2">
+            <el-button size="small" @click="openAdd">{{ t("chat.newForm") }}</el-button>
+            <el-button size="small" type="primary" @click="saveModel">
+              {{ t("common.confirm") }}
+            </el-button>
+          </div>
+        </el-form>
+
+        <!-- Vortex 推广位：整卡点击在系统浏览器打开官网 -->
+        <div
+          class="relative mt-3 cursor-pointer overflow-hidden rounded-xl px-3 py-2.5 bg-[linear-gradient(120deg,#7c3aed_0%,#4f46e5_50%,#0284c7_100%)] transition-opacity duration-150 hover:opacity-95"
+          role="link"
+          :title="VORTEX_URL"
+          @click="openVortex"
+        >
+          <div class="absolute -right-5 -top-7 h-16 w-16 rounded-full bg-white/10" />
+          <div class="absolute -left-6 -bottom-9 h-14 w-14 rounded-full bg-white/10" />
+          <div class="relative flex items-center gap-2.5">
+            <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/20 text-[15px] font-bold text-white">V</div>
+            <div class="min-w-0 flex-1">
+              <div class="text-[13px] font-bold leading-tight tracking-wide text-white">Vortex</div>
+              <div class="text-[10.5px] leading-tight text-white/85">{{ t("chat.vortexTagline") }}</div>
+            </div>
+            <el-button
+              v-if="VORTEX_API_URL"
+              size="small"
+              class="h-6 px-2 m-0 shrink-0 !bg-white/15 !border-transparent !text-white hover:!bg-white/25"
+              @click.stop="fillVortex"
+            >
+              {{ t("chat.vortexFill") }}
+            </el-button>
+            <span class="inline-flex shrink-0 items-center gap-0.5 text-[10.5px] text-white/85">
+              {{ t("chat.vortexLearn") }}
+              <el-icon class="text-[10px]"><ArrowRight /></el-icon>
             </span>
           </div>
-          <div class="inline-flex items-center shrink-0 [&_.el-button+_.el-button]:ml-0.5">
-            <el-button v-if="m.id !== activeId" size="small" text type="primary" @click="config.setActiveAiModel(m.id)">
-              {{ t("chat.use") }}
-            </el-button>
-            <el-button size="small" text :icon="Edit" @click="openEdit(m)" />
-            <el-button size="small" text :icon="Delete" @click="removeModel(m)" />
-          </div>
         </div>
-        <el-empty v-if="models.length === 0" :description="t('chat.emptyModels')" :image-size="50" />
       </el-scrollbar>
-      <el-divider class="my-3" />
-      <el-form label-position="left" label-width="76px" class="[&_.el-form-item]:mb-2.5" @submit.prevent>
-        <el-form-item :label="t('chat.modelName')">
-          <el-input v-model="form.name" :placeholder="t('chat.modelNamePh')" />
-        </el-form-item>
-        <el-form-item :label="t('chat.baseUrl')">
-          <el-input v-model="form.base_url" :placeholder="t('chat.baseUrlPh')" />
-        </el-form-item>
-        <el-form-item :label="t('chat.apiKey')">
-          <el-input v-model="form.api_key" type="password" show-password :placeholder="t('chat.apiKeyPh')" />
-        </el-form-item>
-        <el-form-item :label="t('chat.modelId')">
-          <el-input v-model="form.model" :placeholder="t('chat.modelIdPh')" />
-        </el-form-item>
-        <div class="flex justify-end gap-2">
-          <el-button size="small" @click="openAdd">{{ t("chat.newForm") }}</el-button>
-          <el-button size="small" type="primary" @click="saveModel">
-            {{ t("common.confirm") }}
-          </el-button>
-        </div>
-      </el-form>
     </el-dialog>
   </div>
 </template>

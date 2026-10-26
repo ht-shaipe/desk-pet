@@ -343,48 +343,51 @@ function confirmDialog() {
       width="300"
       append-to-body
     >
-      <el-form label-position="top" size="small">
-        <el-form-item :label="t('launcher.name')">
-          <el-input v-model="form.name" :placeholder="t('launcher.namePh')" maxlength="20" />
-        </el-form-item>
-        <el-form-item :label="t('launcher.type')">
-          <el-select v-model="form.item_type" @change="onTypeChange">
-            <el-option v-for="opt in typeOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
-          </el-select>
-        </el-form-item>
-        <el-form-item :label="t('launcher.value')">
-          <el-select
-            v-if="form.item_type === 'app'"
-            v-model="form.value"
-            filterable
-            allow-create
-            default-first-option
-            :placeholder="valuePlaceholder"
-            @change="onAppPicked"
-          >
-            <el-option v-for="app in apps" :key="app.value" :label="app.name" :value="app.value">
-              <div class="flex items-center gap-1.5 min-w-0">
-                <span class="inline-flex shrink-0 items-center justify-center w-[18px] h-[18px] rounded-[4px] overflow-hidden bg-dp-btn-bg">
-                  <img
-                    v-if="appIconUrls[app.value]"
-                    class="w-full h-full object-contain"
-                    :src="appIconUrls[app.value]"
-                    alt=""
-                  />
-                </span>
-                <span class="truncate">{{ app.name }}</span>
-              </div>
-            </el-option>
-          </el-select>
-          <el-input v-else v-model="form.value" :placeholder="valuePlaceholder" />
-        </el-form-item>
-        <el-form-item :label="t('launcher.iconLabel')">
-          <el-input v-model="form.icon" maxlength="2" :placeholder="t('launcher.iconPh')" />
-        </el-form-item>
-        <el-form-item :label="t('launcher.color')">
-          <el-color-picker v-model="form.color" />
-        </el-form-item>
-      </el-form>
+      <!-- 弹窗内容统一交给 el-scrollbar（限高由 main.css 的 .el-dialog 统一约束） -->
+      <el-scrollbar class="dp-scroll pr-1">
+        <el-form label-position="top" size="small">
+          <el-form-item :label="t('launcher.name')">
+            <el-input v-model="form.name" :placeholder="t('launcher.namePh')" maxlength="20" />
+          </el-form-item>
+          <el-form-item :label="t('launcher.type')">
+            <el-select v-model="form.item_type" @change="onTypeChange">
+              <el-option v-for="opt in typeOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+            </el-select>
+          </el-form-item>
+          <el-form-item :label="t('launcher.value')">
+            <el-select
+              v-if="form.item_type === 'app'"
+              v-model="form.value"
+              filterable
+              allow-create
+              default-first-option
+              :placeholder="valuePlaceholder"
+              @change="onAppPicked"
+            >
+              <el-option v-for="app in apps" :key="app.value" :label="app.name" :value="app.value">
+                <div class="flex items-center gap-1.5 min-w-0">
+                  <span class="inline-flex shrink-0 items-center justify-center w-[18px] h-[18px] rounded-[4px] overflow-hidden bg-dp-btn-bg">
+                    <img
+                      v-if="appIconUrls[app.value]"
+                      class="w-full h-full object-contain"
+                      :src="appIconUrls[app.value]"
+                      alt=""
+                    />
+                  </span>
+                  <span class="truncate">{{ app.name }}</span>
+                </div>
+              </el-option>
+            </el-select>
+            <el-input v-else v-model="form.value" :placeholder="valuePlaceholder" />
+          </el-form-item>
+          <el-form-item :label="t('launcher.iconLabel')">
+            <el-input v-model="form.icon" maxlength="2" :placeholder="t('launcher.iconPh')" />
+          </el-form-item>
+          <el-form-item :label="t('launcher.color')">
+            <el-color-picker v-model="form.color" />
+          </el-form-item>
+        </el-form>
+      </el-scrollbar>
       <template #footer>
         <el-button size="small" @click="dialogVisible = false">{{ t("common.cancel") }}</el-button>
         <el-button size="small" type="primary" @click="confirmDialog">{{ t("common.confirm") }}</el-button>
