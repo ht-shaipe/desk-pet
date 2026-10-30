@@ -175,135 +175,135 @@ pub fn start_poll(app: AppHandle) {
         loop {
             std::thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
 
-            // 先尝试读文本
-            match board.read_text() {
-                Ok(text) => {
-                    let text = text.trim().to_string();
-                    if text.is_empty() {
-                        continue;
-                    }
-                    if last_text.as_deref() == Some(text.as_str()) {
-                        continue;
-                    }
-                    last_text = Some(text.clone());
-                    last_image_sig = None;
+            // 先尝试读文本；空文本或读取失败时 fall through 到图片检测
+            let text = board
+                .read_text()
+                .ok()
+                .map(|t| t.trim().to_string())
+                .filter(|t| !t.is_empty());
 
-                    let stored = truncate_chars(&text, MAX_CHARS);
-                    let orphan_imgs: Vec<String> = {
-                        let state = app.state::<AppState>();
-                        let mut list = state.clipboard.lock().unwrap();
-                        if list.first().map(|e| e.text.as_str()) == Some(stored.as_str()) {
-                            continue;
-                        }
-                        // 全局去重：相同内容的历史条目上移为新条目，并累计复制次数
-                        let prev = list.iter().position(|e| e.kind == "text" && e.text == stored);
-                        let count = prev.map_or(1, |i| list[i].copy_count.saturating_add(1));
-                        if let Some(i) = prev {
-                            list.remove(i);
-                        }
-                        let entry = ClipEntry {
-                            id: format!("c-{}", now_millis()),
-                            text: stored,
-                            kind: "text".into(),
-                            updated_at: now_millis(),
-                            copy_count: count,
-                            sig: String::new(),
-                        };
-                        list.insert(0, entry);
-                        if list.len() > MAX_ENTRIES {
-                            let orphans: Vec<String> = list[MAX_ENTRIES..]
-                                .iter()
-                                .filter(|e| e.kind == "image")
-                                .map(|e| e.text.clone())
-                                .collect();
-                            list.truncate(MAX_ENTRIES);
-                            orphans
-                        } else {
-                            Vec::new()
-                        }
-                    };
-                    cleanup_image_files(&app, &orphan_imgs);
-                    let _ = persist(&app);
-                    let _ = app.emit("clipboard://changed", ());
+            if let Some(text) = text {
+                if last_text.as_deref() == Some(text.as_str()) {
+                    continue;
                 }
-                Err(_) => {
-                    // 文本读取失败，尝试读图片
-                    let Ok(Some(img)) = board.read_image() else {
-                        continue;
-                    };
-                    if img.rgba.len() > MAX_IMAGE_BYTES {
-                        continue;
-                    }
-                    // 内容级签名：对解码后的 RGBA 字节做哈希（宽高/字节数会误判同尺寸不同图）
-                    let sig = fnv1a64(&img.rgba);
-                    if last_image_sig == Some(sig) {
+                last_text = Some(text.clone());
+                last_image_sig = None;
+
+                let stored = truncate_chars(&text, MAX_CHARS);
+                let orphan_imgs: Vec<String> = {
+                    let state = app.state::<AppState>();
+                    let mut list = state.clipboard.lock().unwrap();
+                    if list.first().map(|e| e.text.as_str()) == Some(stored.as_str()) {
                         continue;
                     }
-                    last_image_sig = Some(sig);
-                    last_text = None;
-                    let sig_str = format!("fnv64:{sig:016x}");
-
-                    // 历史同签名条目：命中则复用其 id/文件名（缩略图不失效）并累计次数
-                    let (entry_id, filename, count) = {
-                        let state = app.state::<AppState>();
-                        let list = state.clipboard.lock().unwrap();
-                        match list.iter().position(|e| e.kind == "image" && e.sig == sig_str) {
-                            Some(i) => (
-                                list[i].id.clone(),
-                                list[i].text.clone(),
-                                list[i].copy_count.saturating_add(1),
-                            ),
-                            None => {
-                                let filename = format!("c-{}.png", now_millis());
-                                (filename[..filename.len() - 4].to_string(), filename, 1)
-                            }
-                        }
-                    };
-
-                    // 保存 PNG 到 app_data_dir/clip_images/（复用旧文件名时原地覆盖）
-                    {
-                        let Ok(dir) = crate::paths::data_dir(&app) else {
-                            continue;
-                        };
-                        let img_dir = dir.join("clip_images");
-                        let _ = std::fs::create_dir_all(&img_dir);
-                        let path = img_dir.join(&filename);
-                        if deskpet_os::clipboard::save_png(&path, &img).is_err() {
-                            continue;
-                        }
+                    // 全局去重：相同内容的历史条目上移为新条目，并累计复制次数
+                    let prev = list.iter().position(|e| e.kind == "text" && e.text == stored);
+                    let count = prev.map_or(1, |i| list[i].copy_count.saturating_add(1));
+                    if let Some(i) = prev {
+                        list.remove(i);
                     }
-
-                    let orphan_imgs: Vec<String> = {
-                        let state = app.state::<AppState>();
-                        let mut list = state.clipboard.lock().unwrap();
-                        // 图片内容级去重：同签名旧条目上移为新条目
-                        list.retain(|e| !(e.kind == "image" && e.sig == sig_str));
-                        let entry = ClipEntry {
-                            id: entry_id,
-                            text: filename,
-                            kind: "image".into(),
-                            updated_at: now_millis(),
-                            copy_count: count,
-                            sig: sig_str,
-                        };
-                        list.insert(0, entry);
-                        if list.len() > MAX_ENTRIES {
-                            let orphans: Vec<String> = list[MAX_ENTRIES..]
-                                .iter()
-                                .filter(|e| e.kind == "image")
-                                .map(|e| e.text.clone())
-                                .collect();
-                            list.truncate(MAX_ENTRIES);
-                            orphans
-                        } else {
-                            Vec::new()
-                        }
+                    let entry = ClipEntry {
+                        id: format!("c-{}", now_millis()),
+                        text: stored,
+                        kind: "text".into(),
+                        updated_at: now_millis(),
+                        copy_count: count,
+                        sig: String::new(),
                     };
-                    cleanup_image_files(&app, &orphan_imgs);
-                    let _ = persist(&app);
-                    let _ = app.emit("clipboard://changed", ());
+                    list.insert(0, entry);
+                    if list.len() > MAX_ENTRIES {
+                        let orphans: Vec<String> = list[MAX_ENTRIES..]
+                            .iter()
+                            .filter(|e| e.kind == "image")
+                            .map(|e| e.text.clone())
+                            .collect();
+                        list.truncate(MAX_ENTRIES);
+                        orphans
+                    } else {
+                        Vec::new()
+                    }
+                };
+                cleanup_image_files(&app, &orphan_imgs);
+                let _ = persist(&app);
+                let _ = app.emit("clipboard://changed", ());
+                continue;
+            }
+
+            // 文本为空或读取失败，尝试读图片
+            let Ok(Some(img)) = board.read_image() else {
+                continue;
+            };
+            if img.rgba.len() > MAX_IMAGE_BYTES {
+                continue;
+            }
+            // 内容级签名：对解码后的 RGBA 字节做哈希（宽高/字节数会误判同尺寸不同图）
+            let sig = fnv1a64(&img.rgba);
+            if last_image_sig == Some(sig) {
+                continue;
+            }
+            last_image_sig = Some(sig);
+            last_text = None;
+            let sig_str = format!("fnv64:{sig:016x}");
+
+            // 历史同签名条目：命中则复用其 id/文件名（缩略图不失效）并累计次数
+            let (entry_id, filename, count) = {
+                let state = app.state::<AppState>();
+                let list = state.clipboard.lock().unwrap();
+                match list.iter().position(|e| e.kind == "image" && e.sig == sig_str) {
+                    Some(i) => (
+                        list[i].id.clone(),
+                        list[i].text.clone(),
+                        list[i].copy_count.saturating_add(1),
+                    ),
+                    None => {
+                        let filename = format!("c-{}.png", now_millis());
+                        (filename[..filename.len() - 4].to_string(), filename, 1)
+                    }
+                }
+            };
+
+            // 保存 PNG 到 app_data_dir/clip_images/（复用旧文件名时原地覆盖）
+            {
+                let Ok(dir) = crate::paths::data_dir(&app) else {
+                    continue;
+                };
+                let img_dir = dir.join("clip_images");
+                let _ = std::fs::create_dir_all(&img_dir);
+                let path = img_dir.join(&filename);
+                if deskpet_os::clipboard::save_png(&path, &img).is_err() {
+                    continue;
                 }
             }
+
+            let orphan_imgs: Vec<String> = {
+                let state = app.state::<AppState>();
+                let mut list = state.clipboard.lock().unwrap();
+                // 图片内容级去重：同签名旧条目上移为新条目
+                list.retain(|e| !(e.kind == "image" && e.sig == sig_str));
+                let entry = ClipEntry {
+                    id: entry_id,
+                    text: filename,
+                    kind: "image".into(),
+                    updated_at: now_millis(),
+                    copy_count: count,
+                    sig: sig_str,
+                };
+                list.insert(0, entry);
+                if list.len() > MAX_ENTRIES {
+                    let orphans: Vec<String> = list[MAX_ENTRIES..]
+                        .iter()
+                        .filter(|e| e.kind == "image")
+                        .map(|e| e.text.clone())
+                        .collect();
+                    list.truncate(MAX_ENTRIES);
+                    orphans
+                } else {
+                    Vec::new()
+                }
+            };
+            cleanup_image_files(&app, &orphan_imgs);
+            let _ = persist(&app);
+            let _ = app.emit("clipboard://changed", ());
         }
     });
 }

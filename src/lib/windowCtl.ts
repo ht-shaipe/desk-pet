@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import { currentMonitor, getCurrentWindow } from "@tauri-apps/api/window";
 import { PhysicalPosition, PhysicalSize } from "@tauri-apps/api/dpi";
 
@@ -27,6 +28,179 @@ let expandedPanelPos: SavedPos | null = null;
 /** 展开态记录用户手动调整后的面板尺寸（物理像素），下次展开沿用。 */
 export function rememberPanelSize(size: SavedSize): void {
   savedPanelSize = size;
+}
+
+/** 与 @tauri-apps/api/window 的 ResizeDirection 一致（该模块未导出类型）。 */
+export type ResizeDirection =
+  | "East"
+  | "North"
+  | "NorthEast"
+  | "NorthWest"
+  | "South"
+  | "SouthEast"
+  | "SouthWest"
+  | "West";
+
+/** macOS 上 tao 未实现 drag_resize_window：startResizeDragging 恒返回 NotSupported，
+ *  且错误在 runtime 层被丢弃（promise 正常 resolve），无法事后感知，只能按平台分流。 */
+const IS_MAC = navigator.userAgent.includes("Macintosh");
+
+const RESIZE_EDGES: Record<ResizeDirection, { east?: boolean; west?: boolean; north?: boolean; south?: boolean }> = {
+  East: { east: true },
+  North: { north: true },
+  NorthEast: { east: true, north: true },
+  NorthWest: { west: true, north: true },
+  South: { south: true },
+  SouthEast: { east: true, south: true },
+  SouthWest: { west: true, south: true },
+  West: { west: true },
+};
+
+/** pointer_state 命令返回的全局指针状态（顶左原点，points）。 */
+interface PointerState {
+  x: number;
+  y: number;
+  down: boolean;
+}
+
+/** 边缘/四角手柄按下时进入对应方向的 resize 拖拽。
+ *  非 macOS 走原生 startResizeDragging；macOS 原生未实现，手动驱动。 */
+export function startWindowResize(direction: ResizeDirection, event: PointerEvent): void {
+  if (!IS_MAC) {
+    void win.startResizeDragging(direction).catch(() => undefined);
+    return;
+  }
+  beginManualResize(direction, event);
+}
+
+/** macOS 手动 resize 会话进行中标记（防重入：角/边手柄存在重叠区）。 */
+let manualResizeActive = false;
+
+/** macOS 手动 resize：窗口被程序化移动（setPosition）后 WebKit 的指针事件流
+ *  会中断（现象：含 N/W 方向的拖动一拖即停，纯改尺寸的 E/S/SE 不受影响），
+ *  因此拖动期间不依赖 DOM 事件，逐帧轮询原生 pointer_state（光标位置 + 左键状态）
+ *  驱动几何更新；DOM 的 pointerup/pointercancel 仅作为正常情况下的快速结束通道。 */
+function beginManualResize(direction: ResizeDirection, event: PointerEvent): void {
+  if (manualResizeActive) {
+    return;
+  }
+  manualResizeActive = true;
+
+  const target = event.currentTarget;
+  if (target instanceof HTMLElement) {
+    try {
+      // 捕获仅用于拖动期间保持手柄光标样式，几何更新不依赖 DOM 事件
+      target.setPointerCapture(event.pointerId);
+    } catch {
+      // 捕获失败不影响 resize 本身
+    }
+  }
+
+  const edges = RESIZE_EDGES[direction];
+  let ended = false;
+  let timer = 0;
+
+  const finish = () => {
+    if (ended) {
+      return;
+    }
+    ended = true;
+    manualResizeActive = false;
+    if (timer) {
+      clearTimeout(timer);
+    }
+  };
+  // 事件流正常时直接在松开时结束；中断时由轮询发现左键抬起兜底
+  window.addEventListener("pointerup", finish, { once: true });
+  window.addEventListener("pointercancel", finish, { once: true });
+
+  void (async () => {
+    try {
+      const [sf, pos, size] = await Promise.all([scaleFactor(), win.outerPosition(), win.outerSize()]);
+      const first = await invoke<PointerState>("pointer_state");
+      if (ended) {
+        return;
+      }
+      if (!first.down) {
+        finish();
+        return;
+      }
+      const start = {
+        x: pos.x,
+        y: pos.y,
+        w: size.width,
+        h: size.height,
+        // 起点取首次轮询的光标位置（不依赖 pointerdown 的 screenX，规避 WKWebView 差异）
+        px: first.x,
+        py: first.y,
+      };
+      const minW = Math.round(MIN_PANEL_WIDTH * sf);
+      const minH = Math.round(MIN_PANEL_HEIGHT * sf);
+
+      /** 按方向反推新几何：E/S 只改尺寸，含 N/W 时先平移原点钉住对边再缩放。 */
+      const apply = (st: PointerState) => {
+        const dx = Math.round((st.x - start.px) * sf);
+        const dy = Math.round((st.y - start.py) * sf);
+        let width = start.w;
+        let height = start.h;
+        let x = start.x;
+        let y = start.y;
+        if (edges.east) {
+          width = Math.max(minW, start.w + dx);
+        }
+        if (edges.south) {
+          height = Math.max(minH, start.h + dy);
+        }
+        if (edges.west) {
+          width = Math.max(minW, start.w - dx);
+          x = start.x + (start.w - width);
+        }
+        if (edges.north) {
+          height = Math.max(minH, start.h - dy);
+          y = start.y + (start.h - height);
+        }
+        if (width === start.w && height === start.h && x === start.x && y === start.y) {
+          return;
+        }
+        if (x !== start.x || y !== start.y) {
+          void win.setPosition(new PhysicalPosition(x, y));
+        }
+        void win.setSize(new PhysicalSize(width, height));
+      };
+
+      let failures = 0;
+      const step = () => {
+        if (ended) {
+          return;
+        }
+        void invoke<PointerState>("pointer_state")
+          .then((st) => {
+            if (ended) {
+              return;
+            }
+            failures = 0;
+            if (!st.down) {
+              finish();
+              return;
+            }
+            apply(st);
+            timer = window.setTimeout(step, 8);
+          })
+          .catch(() => {
+            failures += 1;
+            // IPC 持续失败（异常场景）时退出，避免空转
+            if (failures > 20) {
+              finish();
+              return;
+            }
+            timer = window.setTimeout(step, 16);
+          });
+      };
+      step();
+    } catch {
+      finish();
+    }
+  })();
 }
 
 async function scaleFactor(): Promise<number> {

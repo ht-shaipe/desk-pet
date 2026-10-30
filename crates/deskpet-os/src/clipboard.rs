@@ -44,7 +44,15 @@ impl Clipboard {
                 height: img.height as u32,
                 rgba: img.bytes.into_owned(),
             })),
-            Err(_) => Ok(None),
+            Err(_) => {
+                #[cfg(target_os = "macos")]
+                {
+                    if let Some(img) = read_png_from_pasteboard()? {
+                        return Ok(Some(img));
+                    }
+                }
+                Ok(None)
+            }
         }
     }
 
@@ -86,5 +94,32 @@ pub fn read_png(path: &Path) -> Result<ImagePayload> {
         width: rgba.width(),
         height: rgba.height(),
         rgba: rgba.into_raw(),
+    })
+}
+
+/// macOS 回退：arboard 只读 TIFF，截图工具常只放 PNG，这里直接从粘贴板读 PNG 数据。
+#[cfg(target_os = "macos")]
+fn read_png_from_pasteboard() -> Result<Option<ImagePayload>> {
+    use objc2::{msg_send, rc::autoreleasepool, ClassType};
+    use objc2_app_kit::{NSPasteboard, NSPasteboardTypePNG};
+
+    autoreleasepool(|_| {
+        let pasteboard: Option<objc2::rc::Retained<NSPasteboard>> =
+            unsafe { msg_send![NSPasteboard::class(), generalPasteboard] };
+        let Some(pasteboard) = pasteboard else {
+            return Ok(None);
+        };
+        let Some(data) = (unsafe { pasteboard.dataForType(NSPasteboardTypePNG) }) else {
+            return Ok(None);
+        };
+        let bytes = unsafe { data.as_bytes_unchecked() };
+        let img = image::load_from_memory_with_format(bytes, image::ImageFormat::Png)
+            .map_err(|e| OsError::Other(e.to_string()))?;
+        let rgba = img.to_rgba8();
+        Ok(Some(ImagePayload {
+            width: rgba.width(),
+            height: rgba.height(),
+            rgba: rgba.into_raw(),
+        }))
     })
 }

@@ -3,16 +3,6 @@ import { nextTick, onMounted, onUnmounted, watch } from "vue";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 
-/** 与 @tauri-apps/api/window.js 内部定义一致（模块未导出） */
-type ResizeDirection =
-  | "East"
-  | "North"
-  | "NorthEast"
-  | "NorthWest"
-  | "South"
-  | "SouthEast"
-  | "SouthWest"
-  | "West";
 import PetSprite from "@/components/pet/PetSprite.vue";
 import PanelContainer from "@/components/layout/PanelContainer.vue";
 import { useUiStore } from "@/stores/ui";
@@ -20,7 +10,7 @@ import { useConfigStore } from "@/stores/config";
 import { useClipboardStore } from "@/stores/clipboard";
 import { useLauncherStore } from "@/stores/launcher";
 import { useFavoritesStore } from "@/stores/favorites";
-import { collapseWindow, expandWindow, rememberPanelSize } from "@/lib/windowCtl";
+import { collapseWindow, expandWindow, rememberPanelSize, startWindowResize, type ResizeDirection } from "@/lib/windowCtl";
 import { useUpdater } from "@/composables/useUpdater";
 import { autoPullFavorites } from "@/composables/useStashCloud";
 
@@ -105,9 +95,11 @@ watch(
   }
 );
 
-/** 边缘/四角手柄按下时交给原生窗口按对应方向进入 resize 拖拽。 */
-function startResize(direction: ResizeDirection) {
-  void win.startResizeDragging(direction).catch(() => undefined);
+/** 边缘/四角手柄按下时交给窗口按对应方向进入 resize 拖拽。
+ *  macOS 上原生 startResizeDragging 未实现（tao 返回 NotSupported 且错误被运行时吞掉），
+ *  由 windowCtl 内部按平台分流：macOS 手动驱动，其余平台走原生。 */
+function startResize(direction: ResizeDirection, event: PointerEvent) {
+  startWindowResize(direction, event);
 }
 </script>
 
@@ -123,37 +115,37 @@ function startResize(direction: ResizeDirection) {
     <div v-show="ui.expanded" class="fixed inset-0 z-10 pointer-events-none" aria-hidden="true">
       <!-- 四边 -->
       <div
-        class="rs-hint left-0 right-0 top-1 h-[6px] cursor-ns-resize"
-        @pointerdown.prevent="startResize('North')"
+        class="rs-hint left-0 right-0 top-0 h-[6px] cursor-ns-resize"
+        @pointerdown.prevent="startResize('North', $event)"
       />
       <div
         class="rs-hint left-0 right-0 bottom-0 h-[6px] cursor-ns-resize"
-        @pointerdown.prevent="startResize('South')"
+        @pointerdown.prevent="startResize('South', $event)"
       />
       <div
         class="rs-hint left-0 top-0 bottom-0 w-[6px] cursor-ew-resize"
-        @pointerdown.prevent="startResize('West')"
+        @pointerdown.prevent="startResize('West', $event)"
       />
       <div
         class="rs-hint right-0 top-0 bottom-0 w-[6px] cursor-ew-resize"
-        @pointerdown.prevent="startResize('East')"
+        @pointerdown.prevent="startResize('East', $event)"
       />
       <!-- 四角 -->
       <div
         class="rs-hint left-0 top-0 w-[20px] h-[20px] cursor-nwse-resize"
-        @pointerdown.prevent="startResize('NorthWest')"
+        @pointerdown.prevent="startResize('NorthWest', $event)"
       />
       <div
         class="rs-hint right-0 top-0 w-[20px] h-[20px] cursor-nesw-resize"
-        @pointerdown.prevent="startResize('NorthEast')"
+        @pointerdown.prevent="startResize('NorthEast', $event)"
       />
       <div
         class="rs-hint left-0 bottom-0 w-[20px] h-[20px] cursor-nesw-resize"
-        @pointerdown.prevent="startResize('SouthWest')"
+        @pointerdown.prevent="startResize('SouthWest', $event)"
       />
       <div
         class="rs-hint right-0 bottom-0 w-[20px] h-[20px] cursor-nwse-resize"
-        @pointerdown.prevent="startResize('SouthEast')"
+        @pointerdown.prevent="startResize('SouthEast', $event)"
       />
     </div>
   </div>

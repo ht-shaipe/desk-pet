@@ -112,8 +112,10 @@ const filtered = computed(() => {
   const k = keyword.value.trim().toLowerCase();
   const tp = type.value;
   return store.entries.filter((e) => {
-    if (k && !isImage(e) && !e.text.toLowerCase().includes(k)) {
-      return false;
+    if (k) {
+      if (isImage(e) || !e.text.toLowerCase().includes(k)) {
+        return false;
+      }
     }
     if (tp !== "all" && classifyEntry(e) !== tp) {
       return false;

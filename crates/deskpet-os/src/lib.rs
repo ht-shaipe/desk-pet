@@ -8,6 +8,9 @@ pub mod http;
 pub mod icons;
 pub mod launch;
 mod proc;
+pub mod pointer;
+#[cfg(target_os = "macos")]
+pub mod window;
 
 pub use error::OsError;
 

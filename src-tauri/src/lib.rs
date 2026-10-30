@@ -48,6 +48,7 @@ pub fn run() {
             tauri_cmds::system_cmds::quick_action,
             tauri_cmds::system_cmds::get_platform,
             tauri_cmds::system_cmds::set_show_dock,
+            tauri_cmds::pointer_cmds::pointer_state,
             tauri_cmds::toolbox_cmds::get_clipboard_image,
             tauri_cmds::toolbox_cmds::set_clipboard_image,
             tauri_cmds::toolbox_cmds::save_qr_png,
@@ -69,6 +70,18 @@ pub fn run() {
             let dir = paths::data_dir(handle)?;
             let store = deskpet_store::Store::open(&dir)?;
             handle.manage(state::AppState::new(store));
+
+            // 窗口最外层圆角：卡片 CSS 阴影延伸进透明边距后被方形窗口边界硬裁，
+            // 底部露出直角半透明带（阴影向下偏移，底边最明显）。把窗口内容层裁成
+            // 圆角，半径与卡片圆角 + 边距同心（主窗 16+8=24，通知窗卡片贴边 20）。
+            #[cfg(target_os = "macos")]
+            for (label, radius) in [("main", 24.0), ("notify", 20.0)] {
+                if let Some(win) = handle.get_webview_window(label) {
+                    if let Ok(ptr) = win.ns_window() {
+                        unsafe { deskpet_os::window::round_window(ptr, radius) };
+                    }
+                }
+            }
 
             let mut settings = deskpet_store::settings::load(&dir);
             // 旧版聊天历史存于 settings.json，启动时迁入 SQLite 并从设置中清除
