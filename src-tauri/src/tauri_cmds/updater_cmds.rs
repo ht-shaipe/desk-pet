@@ -24,7 +24,9 @@ pub async fn updater_open(app: AppHandle) -> Result<bool, String> {
         .build()
         .is_ok();
         if let Some(window) = app_for_window.get_webview_window("updater") {
-            // 无边框透明窗：内容层裁圆角（与主面板/分析窗口同一套外观语言）
+            // 无边框透明窗：内容层裁圆角（与主面板/分析窗口同一套外观语言）。
+            // ns_window 是 macOS 专属 API，Windows 由系统自动圆角，无需处理。
+            #[cfg(target_os = "macos")]
             if let Ok(ns_window) = window.ns_window() {
                 unsafe {
                     deskpet_os::window::round_window(ns_window, 14.0);
