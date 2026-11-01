@@ -3,6 +3,8 @@
  * 桌面环境下检查、下载并安装应用更新，提供状态、进度等响应式数据。
  */
 import { ref, readonly, defineComponent, h } from "vue";
+import { invoke } from "@tauri-apps/api/core";
+import { useUiStore } from "@/stores/ui";
 
 /** 更新流程状态 */
 export type UpdateStatus =
@@ -60,8 +62,11 @@ async function checkForUpdate(_silent = false): Promise<boolean> {
   }
 }
 
-/** 下载并安装更新，实时更新进度 */
+/** 下载并安装更新，实时更新进度；下载中/已就绪时重复调用直接返回，避免并发下载。 */
 async function downloadAndInstall(): Promise<void> {
+  if (status.value === "downloading" || status.value === "ready") {
+    return;
+  }
   if (!update) {
     status.value = "error";
     errorMsg.value = "没有可用的更新";
@@ -164,16 +169,30 @@ async function startUpdateFromNotification(): Promise<void> {
 /** 已通知过的版本号：同一版本只弹一次通知 */
 let notifiedVersion: string | null = null;
 
-/** 弹出「发现新版本」通知 */
+/** 用户在更新弹窗里点过"忽略此版本"的版本号（localStorage 与更新弹窗共享）。 */
+function skippedVersion(): string | null {
+  return localStorage.getItem("updater.skippedVersion");
+}
+
+export function isVersionSkipped(version: string | null | undefined): boolean {
+  return !!version && skippedVersion() === version;
+}
+
+/** 弹出「发现新版本」提示：面板展开走应用内通知；折叠态弹独立更新窗口。 */
 function notifyUpdateAvailable(): void {
   if (!updateInfo.value) {
     return;
   }
   const version = updateInfo.value.version;
-  if (notifiedVersion === version) {
+  if (notifiedVersion === version || isVersionSkipped(version)) {
     return;
   }
   notifiedVersion = version;
+  if (!useUiStore().expanded) {
+    // 折叠态：面板只有 72px，应用内通知没有可用空间，弹独立更新窗口
+    void invoke("updater_open").catch(() => undefined);
+    return;
+  }
   import("element-plus").then(({ ElNotification }) => {
     const notification = ElNotification({
       title: `发现新版本 v${version}`,
@@ -254,5 +273,8 @@ export function useUpdater() {
     startUpdateFromNotification,
     checkOnStartup,
     startPeriodicCheck,
+    /** 面板折叠态：弹独立更新窗口（内含忽略此版本/检查分流逻辑） */
+    notifyUpdate: notifyUpdateAvailable,
+    isVersionSkipped,
   };
 }

@@ -71,6 +71,12 @@ pub struct AppSettings {
     /// 收藏增量拉取基线（服务端时间 serverNow）
     #[serde(default)]
     pub favorite_last_sync: Option<String>,
+    /// 剪贴板云同步开关（鉴权 token 复用 auth_token）
+    #[serde(default)]
+    pub clipboard_sync: Option<bool>,
+    /// 剪贴板增量拉取基线（服务端时间 serverNow）
+    #[serde(default)]
+    pub clipboard_last_sync: Option<String>,
     /// 番茄钟专注时长（分钟），缺省 25
     #[serde(default)]
     pub pomo_focus_min: Option<u32>,
@@ -102,6 +108,8 @@ impl Default for AppSettings {
             ai_messages: Vec::new(),
             favorite_sync: None,
             favorite_last_sync: None,
+            clipboard_sync: None,
+            clipboard_last_sync: None,
             pomo_focus_min: None,
             pomo_short_min: None,
             pomo_long_min: None,

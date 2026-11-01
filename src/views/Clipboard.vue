@@ -2,17 +2,20 @@
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { ArrowRight, Delete, Link, Memo, Search, Star, TopRight } from "@element-plus/icons-vue";
+import { ArrowRight, Delete, Link, Memo, Search, Setting, Star, TopRight } from "@element-plus/icons-vue";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useClipboardStore } from "@/stores/clipboard";
+import { useConfigStore } from "@/stores/config";
 import { useFavoritesStore } from "@/stores/favorites";
 import { FAV_CATEGORIES, buildFavoriteFromUrl } from "@/lib/stash";
+import { autoPullClipboard, pullClipboard, pushClipboard } from "@/composables/useClipboardCloud";
 import { copyImageToClipboard, getClipImageDir } from "@/api/clipboard";
 import { launchItem } from "@/api/launcher";
 import type { ClipEntry } from "@/types";
 
 const { t } = useI18n();
 const store = useClipboardStore();
+const config = useConfigStore();
 const favorites = useFavoritesStore();
 const keyword = ref("");
 
@@ -23,6 +26,11 @@ onMounted(async () => {
   } catch {
     // 获取图片目录失败时静默忽略
   }
+  // 先等本地库加载完再静默自动拉取（云同步开启且已登录时才生效，5 分钟节流）
+  void store
+    .init()
+    .then(() => autoPullClipboard())
+    .catch(() => undefined);
 });
 
 function isImage(entry: ClipEntry): boolean {
@@ -340,12 +348,114 @@ async function onClear(scope: ClearScope) {
   await store.removeMany(ids);
   ElMessage.success(t("clipboard.cleared"));
 }
+
+// ---------- 云同步 ----------
+
+type SyncCommand = "push" | "pull" | "syncSettings";
+
+const syncVisible = ref(false);
+const pushing = ref(false);
+const pulling = ref(false);
+
+const syncModel = computed({
+  get: () => config.settings.clipboard_sync === true,
+  set: (enabled: boolean) => void onToggleSync(enabled),
+});
+
+function onSyncCommand(cmd: SyncCommand) {
+  if (cmd === "push") {
+    void onPush();
+  } else if (cmd === "pull") {
+    void onPull();
+  } else {
+    syncVisible.value = true;
+  }
+}
+
+function checkToken(): boolean {
+  if (!config.settings.auth_token) {
+    ElMessage.warning(t("clipboard.loginFirst"));
+    return false;
+  }
+  return true;
+}
+
+async function onToggleSync(enabled: boolean) {
+  if (enabled && !checkToken()) {
+    return;
+  }
+  await config.setClipboardSync(enabled);
+  ElMessage.success(enabled ? t("clipboard.syncOn") : t("clipboard.syncOff"));
+}
+
+async function onPush() {
+  if (!checkToken()) {
+    return;
+  }
+  if (store.entries.filter((e) => e.kind !== "image").length === 0) {
+    ElMessage.info(t("clipboard.pushNoData"));
+    return;
+  }
+  pushing.value = true;
+  try {
+    const n = await pushClipboard();
+    ElMessage.success(t("clipboard.pushOk", { n }));
+  } catch (e) {
+    ElMessage.error(t("clipboard.syncFail", { err: String(e) }));
+  } finally {
+    pushing.value = false;
+  }
+}
+
+async function onPull() {
+  if (!checkToken()) {
+    return;
+  }
+  pulling.value = true;
+  try {
+    const { merged, deleted } = await pullClipboard();
+    if (merged + deleted === 0) {
+      ElMessage.info(t("clipboard.pullNothing"));
+    } else {
+      ElMessage.success(t("clipboard.pullOk", { merged, deleted }));
+    }
+  } catch (e) {
+    ElMessage.error(t("clipboard.syncFail", { err: String(e) }));
+  } finally {
+    pulling.value = false;
+  }
+}
+
+const lastSyncText = computed(() => {
+  const raw = config.settings.clipboard_last_sync;
+  if (!raw) {
+    return t("clipboard.neverSync");
+  }
+  const d = new Date(raw.replace(" ", "T"));
+  if (Number.isNaN(d.getTime())) {
+    return t("clipboard.neverSync");
+  }
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const hm = `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return d.getFullYear() === now.getFullYear() ? hm : `${d.getFullYear()}-${hm}`;
+});
 </script>
 
 <template>
   <div class="view-root [&_.view-toolbar]:gap-1.5">
     <div class="view-toolbar">
       <el-input v-model="keyword" size="small" clearable :placeholder="t('clipboard.searchPh')" :prefix-icon="Search" />
+      <el-dropdown trigger="click" @command="(c: SyncCommand) => onSyncCommand(c)">
+        <el-button size="small" text class="!p-0 shrink-0" :icon="Setting" />
+        <template #dropdown>
+          <el-dropdown-menu class="!text-[12px]">
+            <el-dropdown-item command="push">{{ t("clipboard.push") }}</el-dropdown-item>
+            <el-dropdown-item command="pull">{{ t("clipboard.pull") }}</el-dropdown-item>
+            <el-dropdown-item command="syncSettings" divided>{{ t("clipboard.syncSettings") }}</el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
       <el-dropdown trigger="click" @command="(s: ClearScope) => onClear(s)">
         <el-button size="small" text type="danger">{{ t("clipboard.clear") }}</el-button>
         <template #dropdown>
@@ -477,5 +587,33 @@ async function onClear(scope: ClearScope) {
         </div>
       </div>
     </el-scrollbar>
+
+    <!-- 剪贴板同步设置（云同步开关 / 推送 / 拉取） -->
+    <el-dialog v-model="syncVisible" :title="t('clipboard.syncSettings')" width="352" :teleported="false" class="dp-dialog">
+      <el-scrollbar class="dp-scroll pr-1">
+        <div class="dp-dlg-text flex flex-col gap-3">
+          <div class="flex items-center justify-between">
+            <span>{{ t("clipboard.cloudSync") }}</span>
+            <el-switch v-model="syncModel" size="small" />
+          </div>
+          <div class="text-[11px] leading-[1.6]">
+            <template v-if="config.settings.auth_token">
+              <span class="text-dp-tertiary">{{ t("clipboard.account", { user: config.settings.auth_user || "?" }) }}</span>
+            </template>
+            <template v-else>
+              <span class="text-dp-tertiary">{{ t("clipboard.notLogged") }}</span>
+            </template>
+          </div>
+          <div class="grid grid-cols-1 gap-2">
+            <el-button size="small" :loading="pushing" @click="onPush">{{ t("clipboard.push") }}</el-button>
+            <el-button size="small" :loading="pulling" @click="onPull">{{ t("clipboard.pull") }}</el-button>
+          </div>
+          <div class="text-[10.5px] text-dp-tertiary leading-[1.6]">
+            <div>{{ t("clipboard.localStats", { n: store.entries.length }) }}</div>
+            <div>{{ t("clipboard.lastSync", { time: lastSyncText }) }}</div>
+          </div>
+        </div>
+      </el-scrollbar>
+    </el-dialog>
   </div>
 </template>

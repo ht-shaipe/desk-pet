@@ -64,13 +64,18 @@ interface PointerState {
 }
 
 /** 边缘/四角手柄按下时进入对应方向的 resize 拖拽。
- *  非 macOS 走原生 startResizeDragging；macOS 原生未实现，手动驱动。 */
-export function startWindowResize(direction: ResizeDirection, event: PointerEvent): void {
+ *  非 macOS 走原生 startResizeDragging；macOS 原生未实现，手动驱动。
+ *  `min` 覆盖默认最小尺寸（面板 300×420 / 分析窗口 720×520）。 */
+export function startWindowResize(
+  direction: ResizeDirection,
+  event: PointerEvent,
+  min?: { width: number; height: number },
+): void {
   if (!IS_MAC) {
     void win.startResizeDragging(direction).catch(() => undefined);
     return;
   }
-  beginManualResize(direction, event);
+  beginManualResize(direction, event, min);
 }
 
 /** macOS 手动 resize 会话进行中标记（防重入：角/边手柄存在重叠区）。 */
@@ -80,7 +85,11 @@ let manualResizeActive = false;
  *  会中断（现象：含 N/W 方向的拖动一拖即停，纯改尺寸的 E/S/SE 不受影响），
  *  因此拖动期间不依赖 DOM 事件，逐帧轮询原生 pointer_state（光标位置 + 左键状态）
  *  驱动几何更新；DOM 的 pointerup/pointercancel 仅作为正常情况下的快速结束通道。 */
-function beginManualResize(direction: ResizeDirection, event: PointerEvent): void {
+function beginManualResize(
+  direction: ResizeDirection,
+  event: PointerEvent,
+  min?: { width: number; height: number },
+): void {
   if (manualResizeActive) {
     return;
   }
@@ -134,8 +143,8 @@ function beginManualResize(direction: ResizeDirection, event: PointerEvent): voi
         px: first.x,
         py: first.y,
       };
-      const minW = Math.round(MIN_PANEL_WIDTH * sf);
-      const minH = Math.round(MIN_PANEL_HEIGHT * sf);
+      const minW = Math.round((min?.width ?? MIN_PANEL_WIDTH) * sf);
+      const minH = Math.round((min?.height ?? MIN_PANEL_HEIGHT) * sf);
 
       /** 按方向反推新几何：E/S 只改尺寸，含 N/W 时先平移原点钉住对边再缩放。 */
       const apply = (st: PointerState) => {

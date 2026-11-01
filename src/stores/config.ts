@@ -4,9 +4,10 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { emit } from "@tauri-apps/api/event";
 import { getPlatform, setShowDock as invokeSetShowDock } from "@/api/system";
 import { getSettings, saveSettings, setPetAvatar, resetPetAvatar } from "@/api/settings";
-import type { AiModel, AppSettings, ThemeMode } from "@/types";
+import type { AiModel, AppSettings } from "@/types";
 import { detectLocale, setAppLocale, type AppLocale } from "@/i18n";
 import { initWindowPosition } from "@/lib/windowCtl";
+import { applyAccentColor, applyTheme, normalizeTheme } from "@/lib/theme";
 import { useUiStore } from "./ui";
 
 const win = getCurrentWindow();
@@ -17,14 +18,6 @@ function normalizeLocale(value: string | null): AppLocale {
     return value;
   }
   return detectLocale();
-}
-
-/** 归一化主题值：light | dark | auto，缺省/非法回退为 auto（跟随系统）。 */
-function normalizeTheme(value: string | null | undefined): ThemeMode {
-  if (value === "light" || value === "dark" || value === "auto") {
-    return value;
-  }
-  return "auto";
 }
 
 /** 归一化精灵大小：钳制到 32-64（呼吸动画峰值不超出 72px 窗口）。 */
@@ -91,70 +84,6 @@ function normalizeAiModels(value: unknown): AiModel[] {
   }
   return models;
 }
-
-/** 把主题色写入 DOM：覆盖 --dp-accent，并按 Element Plus 规则生成 primary 明暗变体。 */
-function hexToRgb(hex: string): [number, number, number] {
-  let h = hex.slice(1);
-  if (h.length === 3) {
-    h = h
-      .split("")
-      .map((c) => c + c)
-      .join("");
-  }
-  const n = parseInt(h, 16);
-  return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
-}
-
-function mixHex(base: string, other: string, ratio: number): string {
-  const [r1, g1, b1] = hexToRgb(base);
-  const [r2, g2, b2] = hexToRgb(other);
-  const mix = (a: number, b: number) => Math.round(a * (1 - ratio) + b * ratio);
-  const to2 = (v: number) => v.toString(16).padStart(2, "0");
-  return `#${to2(mix(r1, r2))}${to2(mix(g1, g2))}${to2(mix(b1, b2))}`;
-}
-
-/** 把主题色写入 DOM：覆盖 --dp-accent，并按 Element Plus 规则生成 primary 明暗变体。 */
-function applyAccentColor(color: string | null | undefined) {
-  const root = document.documentElement;
-  if (!color) {
-    root.style.removeProperty("--dp-accent");
-    root.style.removeProperty("--dp-accent-deep");
-    root.style.removeProperty("--el-color-primary");
-    root.style.removeProperty("--el-color-primary-light-3");
-    root.style.removeProperty("--el-color-primary-light-5");
-    root.style.removeProperty("--el-color-primary-light-7");
-    root.style.removeProperty("--el-color-primary-light-8");
-    root.style.removeProperty("--el-color-primary-light-9");
-    root.style.removeProperty("--el-color-primary-dark-2");
-    return;
-  }
-  const full = color.length === 4 ? mixHex(color, color, 0) : color;
-  root.style.setProperty("--dp-accent", full);
-  root.style.setProperty("--dp-accent-deep", mixHex(full, "#000000", 0.18));
-  root.style.setProperty("--el-color-primary", full);
-  root.style.setProperty("--el-color-primary-light-3", mixHex(full, "#ffffff", 0.3));
-  root.style.setProperty("--el-color-primary-light-5", mixHex(full, "#ffffff", 0.5));
-  root.style.setProperty("--el-color-primary-light-7", mixHex(full, "#ffffff", 0.7));
-  root.style.setProperty("--el-color-primary-light-8", mixHex(full, "#ffffff", 0.8));
-  root.style.setProperty("--el-color-primary-light-9", mixHex(full, "#ffffff", 0.9));
-  root.style.setProperty("--el-color-primary-dark-2", mixHex(full, "#000000", 0.2));
-}
-
-/** 把主题同步到 DOM（html.dark 同时驱动自研变量与 Element Plus 暗色变量）。auto 跟随系统。 */
-let currentTheme: ThemeMode = "auto";
-const darkMedia = window.matchMedia("(prefers-color-scheme: dark)");
-
-function applyTheme(theme: ThemeMode) {
-  currentTheme = theme;
-  const dark = theme === "auto" ? darkMedia.matches : theme === "dark";
-  document.documentElement.classList.toggle("dark", dark);
-}
-
-darkMedia.addEventListener("change", () => {
-  if (currentTheme === "auto") {
-    document.documentElement.classList.toggle("dark", darkMedia.matches);
-  }
-});
 
 export const useConfigStore = defineStore("config", () => {
   const settings = ref<AppSettings>({
@@ -247,6 +176,18 @@ export const useConfigStore = defineStore("config", () => {
   /** 收藏增量拉取基线（服务端 serverNow）。 */
   async function setFavoriteLastSync(serverNow: string) {
     settings.value.favorite_last_sync = serverNow;
+    schedulePersist();
+  }
+
+  /** 剪贴板云同步开关。 */
+  async function setClipboardSync(enabled: boolean) {
+    settings.value.clipboard_sync = enabled;
+    schedulePersist();
+  }
+
+  /** 剪贴板增量拉取基线（服务端 serverNow）。 */
+  async function setClipboardLastSync(serverNow: string) {
+    settings.value.clipboard_last_sync = serverNow;
     schedulePersist();
   }
 
@@ -368,6 +309,8 @@ export const useConfigStore = defineStore("config", () => {
       ai_active: typeof s.ai_active === "string" ? s.ai_active : null,
       favorite_sync: s.favorite_sync == null ? false : Boolean(s.favorite_sync),
       favorite_last_sync: s.favorite_last_sync ?? null,
+      clipboard_sync: s.clipboard_sync == null ? false : Boolean(s.clipboard_sync),
+      clipboard_last_sync: s.clipboard_last_sync ?? null,
       pomo_focus_min: clampPomoMin(s.pomo_focus_min),
       pomo_short_min: clampPomoMin(s.pomo_short_min),
       pomo_long_min: clampPomoMin(s.pomo_long_min),
@@ -396,6 +339,8 @@ export const useConfigStore = defineStore("config", () => {
     setAuth,
     setFavoriteSync,
     setFavoriteLastSync,
+    setClipboardSync,
+    setClipboardLastSync,
     logout,
     changePetAvatar,
     resetPetAvatarConfig,

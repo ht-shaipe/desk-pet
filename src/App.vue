@@ -13,6 +13,7 @@ import { useFavoritesStore } from "@/stores/favorites";
 import { collapseWindow, expandWindow, rememberPanelSize, startWindowResize, type ResizeDirection } from "@/lib/windowCtl";
 import { useUpdater } from "@/composables/useUpdater";
 import { autoPullFavorites } from "@/composables/useStashCloud";
+import { autoPullClipboard } from "@/composables/useClipboardCloud";
 
 const ui = useUiStore();
 const config = useConfigStore();
@@ -48,10 +49,20 @@ onMounted(() => {
   void updater
     .checkOnStartup(false)
     .then((hasUpdate) => {
-      if (hasUpdate) {
+      if (!hasUpdate) {
+        return;
+      }
+      const version = updater.updateInfo.value?.version;
+      // 用户忽略过的版本不再打扰（可在设置-关于手动更新）
+      if (updater.isVersionSkipped(version)) {
+        return;
+      }
+      if (ui.expanded) {
         ui.settingsTab = "about";
         ui.setActiveView("settings");
-        ui.expand();
+      } else {
+        // 折叠态：独立更新弹窗承载提示与升级操作，不在小图标内渲染提示
+        void updater.notifyUpdate();
       }
     })
     .catch(() => undefined);
@@ -64,6 +75,8 @@ onMounted(() => {
     .catch((err) => console.error("[desk-pet] 窗口位置初始化失败:", err));
   // 启动自动同步：设置载入完成后静默拉取云端收藏（云同步开启且已登录时才生效）
   void configInited.then(() => autoPullFavorites()).catch(() => undefined);
+  // 启动静默拉取云端剪贴板（剪贴板云同步开启且已登录时才生效，与开页共用 5 分钟节流）
+  void configInited.then(() => autoPullClipboard()).catch(() => undefined);
   win
     .onResized((event) => {
       if (ui.expanded) {

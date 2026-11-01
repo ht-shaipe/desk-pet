@@ -2,7 +2,11 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "主窗口权限：拖拽、尺寸/位置控制、通知、自启",
-  "windows": ["main"],
+  "windows": [
+    "main",
+    "analyzer",
+    "updater"
+  ],
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",
@@ -18,6 +22,7 @@
     "core:window:allow-set-focus",
     "core:window:allow-set-always-on-top",
     "core:window:allow-set-ignore-cursor-events",
+    "core:window:allow-close",
     "core:window:allow-show",
     "core:window:allow-hide",
     "notification:default",
@@ -31,8 +36,12 @@
     {
       "identifier": "http:default",
       "allow": [
-        { "url": "https://*:*" },
-        { "url": "http://*:*" }
+        {
+          "url": "https://*:*"
+        },
+        {
+          "url": "http://*:*"
+        }
       ]
     }
   ]

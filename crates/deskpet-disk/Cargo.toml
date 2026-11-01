@@ -1,0 +1,35 @@
+[package]
+name = "deskpet-disk"
+version = "0.1.0"
+description = "Desk Pet 磁盘核心：扫描、计量、分类、删除护栏，不依赖 Tauri/UI"
+edition = "2024"
+
+[dependencies]
+serde = { workspace = true }
+thiserror = { workspace = true }
+fs4 = { workspace = true }
+# 删除护栏与永久删除的 openat(O_NOFOLLOW)/unlinkat 走 rustix（Unix）
+rustix = { version = "1", features = ["fs"] }
+# 回收站：macOS 走系统 Trash（NSFileManager）
+trash = "5"
+
+# inode/dev 身份判定等 Unix 系统调用
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# 回收站批量操作（Finder 同款，音效只播一次）
+block2 = "0.6"
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSWorkspace", "block2"] }
+objc2-foundation = { version = "0.3", default-features = false, features = [
+    "std",
+    "NSArray",
+    "NSDictionary",
+    "NSError",
+    "NSString",
+    "NSURL",
+] }
+
+[dev-dependencies]
+tempfile = { workspace = true }

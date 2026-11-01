@@ -151,6 +151,104 @@ pub fn get_clip_image_dir(app: AppHandle) -> Result<String, String> {
     Ok(dir.join("clip_images").to_string_lossy().to_string())
 }
 
+/// 云端拉取合并：按 id/内容去重合并进内存历史并落库，返回发生变更的条数。
+/// deleted 为云端已删条目 id 列表，按 id 移除（含可能存在的图片条目，文件一并清理）。
+#[tauri::command]
+pub fn merge_clipboard_entries(
+    app: AppHandle,
+    entries: Vec<ClipEntry>,
+    deleted: Vec<String>,
+) -> Result<usize, String> {
+    let mut merged = 0usize;
+    // 锁内只做内存操作；图片文件清理（磁盘 I/O）收集起来在锁外执行，
+    // 避免拿着剪贴板锁做文件系统访问。
+    let mut images_to_cleanup: Vec<String> = Vec::new();
+    let orphan_imgs: Vec<String> = {
+        let state = app.state::<AppState>();
+        let mut list = state.clipboard.lock().unwrap();
+
+        if !deleted.is_empty() {
+            let del_set: std::collections::HashSet<&String> = deleted.iter().collect();
+            let removed_imgs: Vec<String> = list
+                .iter()
+                .filter(|e| del_set.contains(&e.id) && e.kind == "image")
+                .map(|e| e.text.clone())
+                .collect();
+            list.retain(|e| !del_set.contains(&e.id));
+            images_to_cleanup.extend(removed_imgs);
+        }
+
+        for e in entries {
+            // 图片条目依赖本地文件，不参与云端合并
+            if e.kind == "image" {
+                continue;
+            }
+            let text = truncate_chars(e.text.trim(), MAX_CHARS);
+            if text.is_empty() {
+                continue;
+            }
+            let updated_at = e.updated_at;
+            let copy_count = e.copy_count.max(1);
+            let sig = e.sig.trim().to_string();
+            // 同 id 优先命中，其次同内容条目（跨设备 id 不同但内容相同）
+            let pos = list
+                .iter()
+                .position(|x| x.id == e.id)
+                .or_else(|| list.iter().position(|x| x.kind == "text" && x.text == text));
+            match pos {
+                Some(i) => {
+                    let cur = &mut list[i];
+                    if updated_at > cur.updated_at {
+                        *cur = ClipEntry {
+                            id: cur.id.clone(),
+                            text,
+                            kind: "text".into(),
+                            updated_at,
+                            copy_count: copy_count.max(cur.copy_count),
+                            sig,
+                        };
+                        merged += 1;
+                    } else if copy_count > cur.copy_count {
+                        cur.copy_count = copy_count;
+                        merged += 1;
+                    }
+                }
+                None => {
+                    list.push(ClipEntry {
+                        id: e.id,
+                        text,
+                        kind: "text".into(),
+                        updated_at,
+                        copy_count,
+                        sig,
+                    });
+                    merged += 1;
+                }
+            }
+        }
+
+        list.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+        if list.len() > MAX_ENTRIES {
+            let orphans: Vec<String> = list[MAX_ENTRIES..]
+                .iter()
+                .filter(|e| e.kind == "image")
+                .map(|e| e.text.clone())
+                .collect();
+            list.truncate(MAX_ENTRIES);
+            orphans
+        } else {
+            Vec::new()
+        }
+    };
+    images_to_cleanup.extend(orphan_imgs);
+    if !images_to_cleanup.is_empty() {
+        cleanup_image_files(&app, &images_to_cleanup);
+    }
+    persist(&app)?;
+    let _ = app.emit("clipboard://changed", ());
+    Ok(merged)
+}
+
 /// 启动剪贴板轮询线程：每秒读取一次系统剪贴板，捕获新文本/图片并广播事件。
 pub fn start_poll(app: AppHandle) {
     // 启动时载入持久化的历史（SQLite）

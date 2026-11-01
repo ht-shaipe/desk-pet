@@ -1,3 +1,4 @@
+pub mod analyze_cmds;
 pub mod chat_cmds;
 pub mod cleanup_cmds;
 pub mod clipboard_cmds;
@@ -7,3 +8,4 @@ pub mod pointer_cmds;
 pub mod settings_cmds;
 pub mod system_cmds;
 pub mod toolbox_cmds;
+pub mod updater_cmds;

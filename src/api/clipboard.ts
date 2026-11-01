@@ -10,3 +10,5 @@ export const copyToClipboard = (text: string) => invoke<void>("copy_to_clipboard
 export const copyImageToClipboard = (filename: string) =>
   invoke<void>("copy_image_to_clipboard", { filename });
 export const getClipImageDir = () => invoke<string>("get_clip_image_dir");
+export const mergeClipboardEntries = (entries: ClipEntry[], deleted: string[]) =>
+  invoke<number>("merge_clipboard_entries", { entries, deleted });
