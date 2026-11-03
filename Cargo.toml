@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/deskpet-os", "crates/deskpet-disk", "crates/deskpet-store", "src-tauri"]
+members = ["crates/deskpet-os", "crates/deskpet-disk", "crates/deskpet-store", "crates/channel-client", "src-tauri"]
 resolver = "2"
 
 [workspace.dependencies]

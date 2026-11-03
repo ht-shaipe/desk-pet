@@ -34,8 +34,8 @@ tauri-plugin-process = "2"
 deskpet-store = { path = "../crates/deskpet-store" }
 deskpet-os = { path = "../crates/deskpet-os" }
 deskpet-disk = { path = "../crates/deskpet-disk" }
-# gRPC 实时通道客户端（协议契约：kit/channel/proto）
-channel-client = { path = "../../../kit/channel/client" }
+# gRPC 实时通道客户端（自 kit/channel 搬入 workspace，协议契约见 crates/channel-client/proto）
+channel-client = { path = "../crates/channel-client" }
 uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
