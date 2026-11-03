@@ -672,4 +672,10 @@ export default {
     upToDate: "已是最新版本",
     updateFail: "检查更新失败: {err}",
   },
+  channel: {
+    newMessage: "新消息",
+    helloFailed: "实时通道握手失败",
+    updateInstalled: "更新已安装，重启后生效",
+    noticeHint: "点击任意处或按 Esc 关闭",
+  },
 };

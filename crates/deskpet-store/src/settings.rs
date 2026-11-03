@@ -47,6 +47,9 @@ pub struct AppSettings {
     /// 已登录账户（手机号）
     #[serde(default)]
     pub auth_user: Option<String>,
+    /// 稳定设备指纹（安装后生成并持久化，gRPC 通道握手用，重连/重启不变）
+    #[serde(default)]
+    pub device_id: Option<String>,
     /// 自定义精灵头像（app data 内绝对路径），None 用内置图标
     #[serde(default)]
     pub pet_avatar: Option<String>,
@@ -100,6 +103,7 @@ impl Default for AppSettings {
             accent_color: None,
             auth_token: None,
             auth_user: None,
+            device_id: None,
             pet_avatar: None,
             app_name: None,
             show_dock: None,

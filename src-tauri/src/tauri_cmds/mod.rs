@@ -1,4 +1,5 @@
 pub mod analyze_cmds;
+pub mod channel_cmds;
 pub mod chat_cmds;
 pub mod cleanup_cmds;
 pub mod clipboard_cmds;

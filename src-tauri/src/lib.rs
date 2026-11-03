@@ -1,3 +1,4 @@
+mod channel;
 mod paths;
 mod state;
 mod tauri_cmds;
@@ -75,6 +76,10 @@ pub fn run() {
             tauri_cmds::analyze_cmds::disk_analyze_close,
             tauri_cmds::analyze_cmds::disk_analyze_insights,
             tauri_cmds::updater_cmds::updater_open,
+            tauri_cmds::channel_cmds::channel_start,
+            tauri_cmds::channel_cmds::channel_stop,
+            tauri_cmds::channel_cmds::channel_task_ack,
+            tauri_cmds::channel_cmds::channel_task_progress,
         ])
         .setup(|app| {
             use tauri::{Listener, Manager};

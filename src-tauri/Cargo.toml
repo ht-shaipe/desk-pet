@@ -19,7 +19,8 @@ tauri = { version = "2", features = ["protocol-asset", "macos-private-api", "tra
 serde = { workspace = true }
 serde_json = { workspace = true }
 axum = "0.8"
-tokio = { version = "1", features = ["net", "sync", "time"] }
+# rt/macros：channel 运行时使用 tokio::select! 与 spawn_blocking
+tokio = { version = "1", features = ["net", "rt", "sync", "time", "macros"] }
 tokio-stream = "0.1"
 tauri-plugin-single-instance = "2"
 tauri-plugin-notification = "2"
@@ -33,6 +34,9 @@ tauri-plugin-process = "2"
 deskpet-store = { path = "../crates/deskpet-store" }
 deskpet-os = { path = "../crates/deskpet-os" }
 deskpet-disk = { path = "../crates/deskpet-disk" }
+# gRPC 实时通道客户端（协议契约：kit/channel/proto）
+channel-client = { path = "../../../kit/channel/client" }
+uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
 tempfile = { workspace = true }

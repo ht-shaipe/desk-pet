@@ -302,6 +302,7 @@ export const useConfigStore = defineStore("config", () => {
       accent_color: normalizeAccentColor(s.accent_color),
       auth_token: s.auth_token ?? null,
       auth_user: s.auth_user ?? null,
+      device_id: s.device_id ?? null,
       pet_avatar: typeof s.pet_avatar === "string" ? s.pet_avatar : null,
       app_name: normalizeAppName(s.app_name),
       show_dock: typeof s.show_dock === "boolean" ? s.show_dock : true,

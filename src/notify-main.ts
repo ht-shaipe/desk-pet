@@ -3,7 +3,8 @@ import { currentMonitor, getCurrentWindow } from "@tauri-apps/api/window";
 import { PhysicalPosition, PhysicalSize } from "@tauri-apps/api/dpi";
 import { i18n } from "@/i18n";
 
-/** 番茄钟完成提醒浮层：接收主窗口事件，屏幕上方显示大字，点击/按 Esc 关闭。 */
+/** 番茄钟完成提醒浮层：接收主窗口事件，屏幕上方显示大字，点击/按 Esc 关闭。
+ * 同时承载 gRPC 通道推送提醒（channel://push-notice，标题缺省用「新消息」）。 */
 
 interface SessionDonePayload {
   title: string;
@@ -27,7 +28,7 @@ function setup(
 ) {
   /** 按显示器缩放比例把窗口放到主屏上方约 24% 处并显示。 */
   async function showOverlay(payload: SessionDonePayload) {
-    titleEl.textContent = payload.title;
+    titleEl.textContent = payload.title || i18n.global.t("channel.newMessage");
     messageEl.textContent = payload.message;
     hintEl.textContent = i18n.global.t("pomodoro.overlayHint");
     card.classList.remove("hidden");
@@ -54,6 +55,10 @@ function setup(
   }
 
   void listen<SessionDonePayload>("pomodoro://session-done", (event) => {
+    void showOverlay(event.payload);
+  });
+
+  void listen<SessionDonePayload>("channel://push-notice", (event) => {
     void showOverlay(event.payload);
   });
 

@@ -14,6 +14,8 @@ import { collapseWindow, expandWindow, rememberPanelSize, startWindowResize, typ
 import { useUpdater } from "@/composables/useUpdater";
 import { autoPullFavorites } from "@/composables/useStashCloud";
 import { autoPullClipboard } from "@/composables/useClipboardCloud";
+import { initChannelListeners } from "@/composables/useChannel";
+import { channelStart } from "@/api/channel";
 
 const ui = useUiStore();
 const config = useConfigStore();
@@ -77,6 +79,15 @@ onMounted(() => {
   void configInited.then(() => autoPullFavorites()).catch(() => undefined);
   // 启动静默拉取云端剪贴板（剪贴板云同步开启且已登录时才生效，与开页共用 5 分钟节流）
   void configInited.then(() => autoPullClipboard()).catch(() => undefined);
+  // 已登录时建立 gRPC 实时连接并注册事件监听
+  void configInited
+    .then(() => {
+      if (config.settings.auth_token) {
+        void channelStart().catch(() => undefined);
+        void initChannelListeners();
+      }
+    })
+    .catch(() => undefined);
   win
     .onResized((event) => {
       if (ui.expanded) {

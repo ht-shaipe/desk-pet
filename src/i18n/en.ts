@@ -671,4 +671,10 @@ export default {
     upToDate: "Already up to date",
     updateFail: "Update check failed: {err}",
   },
+  channel: {
+    newMessage: "New Message",
+    helloFailed: "Channel handshake failed",
+    updateInstalled: "Update installed. Restart to apply.",
+    noticeHint: "Click anywhere or press Esc to close",
+  },
 };

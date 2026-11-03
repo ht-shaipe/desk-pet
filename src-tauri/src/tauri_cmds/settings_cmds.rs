@@ -13,6 +13,13 @@ pub fn get_settings(app: AppHandle) -> AppSettings {
 #[tauri::command]
 pub fn save_settings(app: AppHandle, settings: AppSettings) -> Result<(), String> {
     let dir = data_dir(&app)?;
+    // device_id 由 Rust 侧 channel_start 生成并持久化；前端设置快照可能载于生成之前
+    // （device_id 为 null），整存快照时保留磁盘已有值，避免设备指纹被清掉后
+    // 下次启动重新生成、服务端把同一台设备当成新设备（补发任务错位）。
+    let mut settings = settings;
+    if settings.device_id.is_none() {
+        settings.device_id = deskpet_store::settings::load(&dir).device_id;
+    }
     deskpet_store::settings::save(&dir, &settings).map_err(|e| e.to_string())
 }
 

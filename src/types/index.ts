@@ -35,6 +35,8 @@ export interface AppSettings {
   accent_color?: string | null;
   auth_token?: string | null;
   auth_user?: string | null;
+  /** 稳定设备指纹（gRPC 通道握手用，安装后生成，前端只读透传） */
+  device_id?: string | null;
   pet_avatar?: string | null;
   app_name?: string | null;
   /** 是否在 Dock 中显示（仅 macOS），缺省 true */
