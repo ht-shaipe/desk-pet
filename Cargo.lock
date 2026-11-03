@@ -965,7 +965,7 @@ dependencies = [
 
 [[package]]
 name = "desk-pet"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "axum",
  "channel-client",
