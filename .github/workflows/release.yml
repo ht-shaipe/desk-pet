@@ -82,16 +82,26 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="v${{ steps.ver.outputs.version }}"
-          # 幂等创建：多平台并发时可能已被其他 job 创建，忽略冲突
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Release $TAG already exists"
-          else
-            gh release create "$TAG" \
+          # 幂等创建 + 重试：并发 job 竞态（already exists）与 GitHub API 瞬时 404/5xx 均靠重试兜底
+          for i in 1 2 3 4 5; do
+            if gh release view "$TAG" >/dev/null 2>&1; then
+              echo "Release $TAG already exists"
+              echo "Release $TAG ready"
+              exit 0
+            fi
+            if gh release create "$TAG" \
               --title "Desk Pet v${{ steps.ver.outputs.version }}" \
               --notes "See the assets below to download and install this version." \
-              --draft=false 2>&1 || true
-          fi
-          echo "Release $TAG ready"
+              --draft=false; then
+              echo "Release $TAG created"
+              echo "Release $TAG ready"
+              exit 0
+            fi
+            echo "::warning::release 查询/创建失败（第 $i/5 次），10s 后重试"
+            sleep 10
+          done
+          echo "::error::无法创建或定位 Release $TAG（GitHub API 持续不可用？）"
+          exit 1
 
       - name: Validate signing secrets
         shell: bash
@@ -188,7 +198,16 @@ jobs:
 
           echo "Uploading ${#FILES[@]} file(s) to $TAG:"
           printf '  %s\n' "${FILES[@]}"
-          gh release upload "$TAG" "${FILES[@]}" --clobber --repo "${{ github.repository }}"
+          n=0
+          until gh release upload "$TAG" "${FILES[@]}" --clobber --repo "${{ github.repository }}"; do
+            n=$((n+1))
+            if [ "$n" -ge 5 ]; then
+              echo "::error::资产上传失败（已重试 $n 次）"
+              exit 1
+            fi
+            echo "::warning::资产上传失败（第 $n/5 次，release not found 为 API 瞬时 404），15s 后重试"
+            sleep 15
+          done
           echo "OK Upload complete"
 
       - name: Upload updater manifest fragment
@@ -264,7 +283,16 @@ jobs:
             console.log(JSON.stringify(fragment, null, 2));
           " > "fragment-${PLATFORM_KEY}.json"
 
-          gh release upload "$TAG" "fragment-${PLATFORM_KEY}.json" --clobber --repo "$REPO"
+          n=0
+          until gh release upload "$TAG" "fragment-${PLATFORM_KEY}.json" --clobber --repo "$REPO"; do
+            n=$((n+1))
+            if [ "$n" -ge 5 ]; then
+              echo "::error::fragment 上传失败（已重试 $n 次）"
+              exit 1
+            fi
+            echo "::warning::fragment 上传失败（第 $n/5 次），15s 后重试"
+            sleep 15
+          done
           echo "OK Fragment uploaded for $PLATFORM_KEY"
 
   merge-manifest:
@@ -302,7 +330,17 @@ jobs:
           REPO="${{ github.repository }}"
 
           mkdir -p fragments
-          gh release download "$TAG" --repo "$REPO" --pattern "fragment-*.json" --dir fragments 2>/dev/null || true
+          for i in 1 2 3 4 5; do
+            if gh release download "$TAG" --repo "$REPO" --pattern "fragment-*.json" --dir fragments; then
+              break
+            fi
+            if [ "$i" -eq 5 ]; then
+              echo "::warning::fragment 下载失败（已重试 $i 次），尝试用已下载结果继续"
+            else
+              echo "::warning::fragment 下载失败（第 $i/5 次），10s 后重试"
+              sleep 10
+            fi
+          done
 
           FRAGMENT_COUNT=$(find fragments -name "fragment-*.json" | wc -l)
           echo "Found $FRAGMENT_COUNT fragment(s)"
@@ -352,7 +390,16 @@ jobs:
             exit 1
           fi
 
-          gh release upload "$TAG" latest.json --clobber --repo "$REPO"
+          n=0
+          until gh release upload "$TAG" latest.json --clobber --repo "$REPO"; do
+            n=$((n+1))
+            if [ "$n" -ge 5 ]; then
+              echo "::error::latest.json 上传失败（已重试 $n 次）"
+              exit 1
+            fi
+            echo "::warning::latest.json 上传失败（第 $n/5 次），15s 后重试"
+            sleep 15
+          done
           echo "OK latest.json uploaded"
 
           # 清理 release 中的 fragment 文件

@@ -20,12 +20,12 @@ function normalizeLocale(value: string | null): AppLocale {
   return detectLocale();
 }
 
-/** 归一化精灵大小：钳制到 32-64（呼吸动画峰值不超出 72px 窗口）。 */
+/** 归一化精灵大小：钳制到 32-96（折叠窗口随尺寸同步放大，见 windowCtl.petWindowSize）。 */
 function clampSpriteSize(value: number | null | undefined): number {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return 48;
   }
-  return Math.min(64, Math.max(32, Math.round(value)));
+  return Math.min(96, Math.max(32, Math.round(value)));
 }
 
 /** 校验主题色格式（#rgb / #rrggbb），非法返回 null。 */
@@ -329,7 +329,12 @@ export const useConfigStore = defineStore("config", () => {
     applyAccentColor(settings.value.accent_color);
     // 启动时同步一次语言，托盘菜单跟随系统语言/用户设置
     await emit("i18n://locale-changed", locale);
-    await initWindowPosition(s.pet_x !== null && s.pet_y !== null, s.pet_x, s.pet_y);
+    await initWindowPosition(
+      s.pet_x !== null && s.pet_y !== null,
+      s.pet_x,
+      s.pet_y,
+      settings.value.sprite_size
+    );
     await win.setAlwaysOnTop(settings.value.always_on_top);
   }
 

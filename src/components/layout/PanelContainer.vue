@@ -7,6 +7,7 @@ import { ChatDotRound, CopyDocument, Grid, Minus, Setting, Star, Suitcase, Timer
 import { useUiStore, type PanelView } from "@/stores/ui";
 import { useConfigStore } from "@/stores/config";
 import { usePomodoroStore } from "@/stores/pomodoro";
+import { panelClearance } from "@/lib/windowCtl";
 import Launcher from "@/views/Launcher.vue";
 import Pomodoro from "@/views/Pomodoro.vue";
 import Clipboard from "@/views/Clipboard.vue";
@@ -33,6 +34,9 @@ const tabs = computed<Array<{ view: PanelView; label: string; icon: Component }>
 ]);
 
 const activeIndex = computed(() => Math.max(0, tabs.value.findIndex((tab) => tab.view === ui.activeView)));
+
+/** 头部让位间距：精灵调大后顶边下移、左内边距加宽，避免图标压住标题与导航按钮。 */
+const clearance = computed(() => panelClearance(config.settings.sprite_size));
 
 const win = getCurrentWindow();
 
@@ -86,10 +90,12 @@ function onBodyPointerdown() {
 
 <template>
   <div
-    class="absolute inset-x-2 top-[42px] bottom-2 bg-dp-panel-bg border border-dp-panel-border rounded-2xl shadow-dp-panel flex flex-col overflow-hidden animate-panel-in"
+    class="absolute inset-x-2 bottom-2 bg-dp-panel-bg border border-dp-panel-border rounded-2xl shadow-dp-panel flex flex-col overflow-hidden animate-panel-in"
+    :style="{ top: `${clearance.top}px` }"
   >
     <div
-      class="flex items-center pt-3 pr-3.5 pb-2.5 pl-16 shrink-0"
+      class="flex items-center pt-3 pr-3.5 pb-2.5 shrink-0"
+      :style="{ paddingLeft: `${clearance.headerPl}px` }"
       @pointerdown="onHeaderPointerdown"
       @pointermove="onHeaderPointermove"
       @pointerup="onHeaderPointerend"

@@ -5,6 +5,7 @@ import { useUiStore } from "@/stores/ui";
 import { useConfigStore } from "@/stores/config";
 import { usePomodoroStore } from "@/stores/pomodoro";
 import { usePetDrag } from "@/composables/usePetDrag";
+import { petWrapSize, spriteSize as normalizeSpriteSize } from "@/lib/windowCtl";
 
 const ui = useUiStore();
 const config = useConfigStore();
@@ -16,13 +17,13 @@ const dragHandlers = usePetDrag({
 
 const rootClass = computed(() => [
   config.windowMoving ? "dragging cursor-grabbing" : "",
-  ui.expanded ? "translate-y-2.5 scale-105 origin-top-left" : "",
+  ui.expanded ? "translate-y-4 scale-105 origin-top-left" : "",
 ]);
 
-const spriteSize = computed(() => {
-  const size = config.settings.sprite_size;
-  return typeof size === "number" && size >= 32 && size <= 64 ? size : 48;
-});
+const spriteSize = computed(() => normalizeSpriteSize(config.settings.sprite_size));
+
+/** 拖拽命中区/呼吸容器边长：精灵 ≤64 保持既有 68px 手感，更大时跟随放大。 */
+const wrapSize = computed(() => petWrapSize(spriteSize.value));
 
 const avatarSrc = computed(() => {
   const p = config.settings.pet_avatar;
@@ -61,8 +62,9 @@ onUnmounted(() => {
 
 <template>
   <div
-    class="pet-wrap absolute top-0 left-0 w-[68px] h-[68px] flex items-center justify-center cursor-grab z-20 touch-none transition-transform duration-200 ease-[ease]"
+    class="pet-wrap absolute top-0 left-0 flex items-center justify-center cursor-grab z-20 touch-none transition-transform duration-200 ease-[ease]"
     :class="rootClass"
+    :style="{ width: `${wrapSize}px`, height: `${wrapSize}px` }"
     v-bind="dragHandlers"
   >
     <img

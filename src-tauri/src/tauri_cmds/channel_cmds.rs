@@ -6,9 +6,10 @@ use tauri::{AppHandle, Manager};
 use crate::paths::data_dir;
 use crate::state::AppState;
 
-/// 启动实时连接（登录后调用）。返回设备指纹。
+/// 启动实时连接（应用启动与登录态变化时调用）。token 由前端传入，空串表示匿名连接。
+/// 返回设备指纹。
 #[tauri::command]
-pub fn channel_start(app: AppHandle) -> Result<String, String> {
+pub fn channel_start(app: AppHandle, token: String) -> Result<String, String> {
     let dir = data_dir(&app)?;
     let mut settings = deskpet_store::settings::load(&dir);
     let device_id = settings.device_id.clone().unwrap_or_else(|| {
@@ -17,7 +18,6 @@ pub fn channel_start(app: AppHandle) -> Result<String, String> {
         let _ = deskpet_store::settings::save(&dir, &settings);
         id
     });
-    let token = settings.auth_token.clone().unwrap_or_default();
     crate::channel::start(app, device_id.clone(), token);
     Ok(device_id)
 }

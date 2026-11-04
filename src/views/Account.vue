@@ -4,8 +4,8 @@ import { useI18n } from "vue-i18n";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { ArrowRight, CircleCloseFilled, Loading, UserFilled } from "@element-plus/icons-vue";
 import { useConfigStore } from "@/stores/config";
-import { channelStart, channelStop } from "@/api/channel";
-import { disposeChannelListeners, initChannelListeners } from "@/composables/useChannel";
+import { channelStart } from "@/api/channel";
+import { initChannelListeners } from "@/composables/useChannel";
 import {
   ApiError,
   extractToken,
@@ -219,7 +219,7 @@ async function submit() {
       return;
     }
     await config.setAuth(token, mobile.value.trim());
-    void channelStart().catch(() => undefined);
+    void channelStart(token).catch(() => undefined);
     void initChannelListeners();
     ElMessage.success(mode.value === "login" ? t("account.loginOk") : t("account.registerOk"));
   } catch (e) {
@@ -245,8 +245,8 @@ async function onLogout() {
     return;
   }
   await config.logout();
-  await channelStop().catch(() => undefined);
-  disposeChannelListeners();
+  // 退出登录不断开实时通道：降级为匿名设备连接（服务端仍可下发设备级任务）
+  void channelStart("").catch(() => undefined);
   mode.value = "login";
   mobile.value = "";
   password.value = "";

@@ -289,7 +289,7 @@ async function onAutostart(val: string | number | boolean) {
               <el-slider
                 v-model="spriteSizeModel"
                 :min="32"
-                :max="64"
+                :max="96"
                 :step="2"
                 size="small"
                 style="width: 130px; --el-slider-height: 16px"

@@ -10,7 +10,14 @@ import { useConfigStore } from "@/stores/config";
 import { useClipboardStore } from "@/stores/clipboard";
 import { useLauncherStore } from "@/stores/launcher";
 import { useFavoritesStore } from "@/stores/favorites";
-import { collapseWindow, expandWindow, rememberPanelSize, startWindowResize, type ResizeDirection } from "@/lib/windowCtl";
+import {
+  collapseWindow,
+  expandWindow,
+  rememberPanelSize,
+  startWindowResize,
+  syncPetWindowSize,
+  type ResizeDirection,
+} from "@/lib/windowCtl";
 import { useUpdater } from "@/composables/useUpdater";
 import { autoPullFavorites } from "@/composables/useStashCloud";
 import { autoPullClipboard } from "@/composables/useClipboardCloud";
@@ -23,6 +30,8 @@ const win = getCurrentWindow();
 
 let unlistenMoved: UnlistenFn | undefined;
 let unlistenResized: UnlistenFn | undefined;
+/** 配置 init 完结后才允许 sprite watcher 驱动窗口几何（防与 initWindowPosition 竞态）。 */
+let petGeomReady = false;
 
 onMounted(() => {
   // 主窗口配置为 visible:false 启动：等首帧绘制完成再 show，避免透明窗首帧前的原生灰底闪现。
@@ -69,6 +78,16 @@ onMounted(() => {
     })
     .catch(() => undefined);
   const configInited = config.init();
+  // 精灵大小 watcher 的放行标记：init 内部替换 settings 也会触发 watcher（如保存值 48→80），
+  // 此时 initWindowPosition 正在恢复位置/尺寸，syncPetWindowSize 不得并发介入（会把保存的位置顶偏），
+  // 因此仅在 init 完结（成功或失败）后才允许 watcher 驱动窗口几何。
+  void configInited
+    .then(() => {
+      petGeomReady = true;
+    })
+    .catch(() => {
+      petGeomReady = true;
+    });
   void configInited
     .then(() => win.onMoved((event) => config.onWindowMoved(event.payload)))
     .then((unlisten) => {
@@ -79,13 +98,11 @@ onMounted(() => {
   void configInited.then(() => autoPullFavorites()).catch(() => undefined);
   // 启动静默拉取云端剪贴板（剪贴板云同步开启且已登录时才生效，与开页共用 5 分钟节流）
   void configInited.then(() => autoPullClipboard()).catch(() => undefined);
-  // 已登录时建立 gRPC 实时连接并注册事件监听
+  // 建立实时连接并注册事件监听（未登录也连：匿名设备身份，登录后带 token 重连）
   void configInited
     .then(() => {
-      if (config.settings.auth_token) {
-        void channelStart().catch(() => undefined);
-        void initChannelListeners();
-      }
+      void channelStart(config.settings.auth_token ?? "").catch(() => undefined);
+      void initChannelListeners();
     })
     .catch(() => undefined);
   win
@@ -111,11 +128,28 @@ watch(
     if (expanded) {
       await expandWindow();
     } else {
-      await collapseWindow();
+      await collapseWindow(config.settings.sprite_size);
       // 就地收起可能改变了精灵位置：程序化 setPosition 不保证触发 onMoved，这里显式同步持久化
       const pos = await win.outerPosition();
       config.onWindowMoved({ x: pos.x, y: pos.y });
     }
+  }
+);
+
+// 精灵大小变化：折叠态同步放大窗口（视觉中心钉住）；程序化 setPosition 需显式持久化位置。
+// petGeomReady=false（init 进行中）与展开态均跳过：前者防与 initWindowPosition 竞态，后者由收起逻辑兜底。
+watch(
+  () => config.settings.sprite_size,
+  (v) => {
+    if (!petGeomReady || ui.expanded) {
+      return;
+    }
+    void syncPetWindowSize(v)
+      .then(async () => {
+        const pos = await win.outerPosition();
+        config.onWindowMoved({ x: pos.x, y: pos.y });
+      })
+      .catch(() => undefined);
   }
 );
 
