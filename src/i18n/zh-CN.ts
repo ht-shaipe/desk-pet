@@ -665,6 +665,8 @@ export default {
     shortcut: "显示/隐藏快捷键",
     dock: "在 Dock 中显示",
     dockDesc: "关闭后仅保留菜单栏图标，不影响桌宠与面板",
+    petClock: "宠物时钟",
+    petClockDesc: "收起面板时在宠物下方显示当前时间",
     about: "关于",
     checkUpdate: "检查更新",
     updateChecking: "检查中...",

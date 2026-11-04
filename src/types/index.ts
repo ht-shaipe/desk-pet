@@ -55,6 +55,8 @@ export interface AppSettings {
   pomo_focus_min?: number | null;
   pomo_short_min?: number | null;
   pomo_long_min?: number | null;
+  /** 收起面板时在精灵下方显示时钟，缺省 true */
+  pet_clock?: boolean | null;
 }
 
 export type FavType = "repo" | "article" | "video" | "product" | "social" | "image" | "bookmark" | "note";

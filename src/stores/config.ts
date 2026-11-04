@@ -95,6 +95,7 @@ export const useConfigStore = defineStore("config", () => {
     sprite_size: 48,
     accent_color: null,
     app_name: DEFAULT_APP_NAME,
+    pet_clock: true,
   });
   const platform = ref("");
   const windowMoving = ref(false);
@@ -287,6 +288,12 @@ export const useConfigStore = defineStore("config", () => {
     schedulePersist();
   }
 
+  /** 切换收起态宠物时钟显示。 */
+  async function setPetClock(enabled: boolean) {
+    settings.value.pet_clock = enabled;
+    schedulePersist();
+  }
+
   async function init() {
     platform.value = await getPlatform();
     const s = await getSettings();
@@ -315,6 +322,7 @@ export const useConfigStore = defineStore("config", () => {
       pomo_focus_min: clampPomoMin(s.pomo_focus_min),
       pomo_short_min: clampPomoMin(s.pomo_short_min),
       pomo_long_min: clampPomoMin(s.pomo_long_min),
+      pet_clock: s.pet_clock == null ? true : Boolean(s.pet_clock),
     };
     setAppLocale(locale);
     applyTheme(theme);
@@ -351,5 +359,6 @@ export const useConfigStore = defineStore("config", () => {
     setActiveAiModel,
     setShowDock,
     setPomoMinutes,
+    setPetClock,
   };
 });

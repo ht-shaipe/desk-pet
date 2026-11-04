@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useUiStore } from "@/stores/ui";
 import { useConfigStore } from "@/stores/config";
@@ -31,6 +31,32 @@ const avatarSrc = computed(() => {
 
 /** 收起面板且番茄钟计时中时，在精灵上显示倒计时 */
 const showCountdown = computed(() => pomo.running && !ui.expanded);
+
+/** 收起面板且开启时钟时显示当前时间；与倒计时同槽位，计时中让位给倒计时 */
+const showClock = computed(() => config.settings.pet_clock === true && !ui.expanded && !showCountdown.value);
+
+const clockText = ref("");
+
+function tickClock() {
+  const d = new Date();
+  const text = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  if (text !== clockText.value) {
+    clockText.value = text;
+  }
+}
+
+let clockTimer: ReturnType<typeof setInterval> | undefined;
+
+onMounted(() => {
+  tickClock();
+  clockTimer = setInterval(tickClock, 1000);
+});
+
+onUnmounted(() => {
+  if (clockTimer !== undefined) {
+    clearInterval(clockTimer);
+  }
+});
 </script>
 
 <template>
@@ -48,9 +74,15 @@ const showCountdown = computed(() => pomo.running && !ui.expanded);
     />
     <div
       v-if="showCountdown"
-      class="absolute bottom-1 left-1/2 -translate-x-1/2 py-px px-1.5 bg-[rgba(31,41,55,0.8)] text-white text-[10px] font-semibold font-mono leading-[1.5] tracking-[0.5px] rounded-full shadow-[0_1px_4px_rgba(0,0,0,0.28)] pointer-events-none z-[21] select-none"
+      class="absolute bottom-0 left-1/2 -translate-x-1/2 py-px px-1.5 bg-[rgba(31,41,55,0.8)] text-white text-[10px] font-semibold font-mono leading-[1.5] tracking-[0.5px] rounded-full shadow-[0_1px_4px_rgba(0,0,0,0.28)] pointer-events-none z-[21] select-none"
     >
       {{ pomo.display }}
+    </div>
+    <div
+      v-else-if="showClock"
+      class="absolute bottom-0 left-1/2 -translate-x-1/2 py-0 px-1 bg-[rgba(31,41,55,0.6)] text-white text-[11px] font-semibold font-mono leading-[1.5] tracking-[0.5px] rounded-full shadow-[0_1px_3px_rgba(0,0,0,0.16)] pointer-events-none z-[21] select-none"
+    >
+      {{ clockText }}
     </div>
   </div>
 </template>

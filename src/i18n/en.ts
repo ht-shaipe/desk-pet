@@ -664,6 +664,8 @@ export default {
     shortcut: "Show/Hide Shortcut",
     dock: "Show in Dock",
     dockDesc: "Keep only the menu bar icon when off; pet and panel unaffected",
+    petClock: "Pet Clock",
+    petClockDesc: "Show the current time below the pet when collapsed",
     about: "About",
     checkUpdate: "Check Update",
     updateChecking: "Checking...",

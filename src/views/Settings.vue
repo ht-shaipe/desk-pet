@@ -295,6 +295,16 @@ async function onAutostart(val: string | number | boolean) {
                 style="width: 130px; --el-slider-height: 16px"
               />
             </div>
+            <div class="flex items-center gap-3 py-3 px-2.5 rounded-[10px] transition-[background] duration-150 ease-[ease] hover:bg-dp-hover-bg">
+              <div class="mr-auto">
+                <div class="text-[13px] font-medium text-dp-primary">{{ t("settings.petClock") }}</div>
+                <div class="text-xs text-dp-tertiary mt-0.5">{{ t("settings.petClockDesc") }}</div>
+              </div>
+              <el-switch
+                :model-value="config.settings.pet_clock ?? true"
+                @change="(v: string | number | boolean) => config.setPetClock(Boolean(v))"
+              />
+            </div>
           </div>
         </el-scrollbar>
       </el-tab-pane>

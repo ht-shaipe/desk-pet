@@ -89,6 +89,9 @@ pub struct AppSettings {
     /// 番茄钟长休息时长（分钟），缺省 15
     #[serde(default)]
     pub pomo_long_min: Option<u32>,
+    /// 收起面板时在精灵下方显示时钟，缺省开启（由前端归一化）
+    #[serde(default)]
+    pub pet_clock: Option<bool>,
 }
 
 impl Default for AppSettings {
@@ -117,6 +120,7 @@ impl Default for AppSettings {
             pomo_focus_min: None,
             pomo_short_min: None,
             pomo_long_min: None,
+            pet_clock: None,
         }
     }
 }
