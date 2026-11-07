@@ -24,6 +24,33 @@ pub struct ChatMessage {
     pub content: String,
 }
 
+/// MCP 服务器配置（前端在 AI 对话里管理，Rust 侧据此建立连接）。
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct McpServerConfig {
+    /// 生成的唯一 id（m-xxxx 同款生成规则）
+    pub id: String,
+    /// 显示名（同时用于派生工具前缀，需可净化为 ASCII 标识符）
+    pub name: String,
+    /// stdio | http
+    #[serde(default)]
+    pub transport: Option<String>,
+    /// stdio：可执行命令，如 npx / node / python
+    #[serde(default)]
+    pub command: Option<String>,
+    /// stdio：命令参数列表
+    #[serde(default)]
+    pub args: Vec<String>,
+    /// stdio：附加环境变量
+    #[serde(default)]
+    pub env: std::collections::BTreeMap<String, String>,
+    /// http：Streamable HTTP 端点 URL
+    #[serde(default)]
+    pub url: Option<String>,
+    /// 启用后随应用启动自动连接
+    #[serde(default)]
+    pub enabled: Option<bool>,
+}
+
 /// 应用设置（settings.json）。
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct AppSettings {
@@ -92,6 +119,9 @@ pub struct AppSettings {
     /// 收起面板时在精灵下方显示时钟，缺省开启（由前端归一化）
     #[serde(default)]
     pub pet_clock: Option<bool>,
+    /// MCP 服务器配置列表（AI 对话可调用的外部工具来源）
+    #[serde(default)]
+    pub mcp_servers: Vec<McpServerConfig>,
 }
 
 impl Default for AppSettings {
@@ -121,6 +151,7 @@ impl Default for AppSettings {
             pomo_short_min: None,
             pomo_long_min: None,
             pet_clock: None,
+            mcp_servers: Vec::new(),
         }
     }
 }

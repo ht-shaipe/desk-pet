@@ -4,7 +4,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { emit } from "@tauri-apps/api/event";
 import { getPlatform, setShowDock as invokeSetShowDock } from "@/api/system";
 import { getSettings, saveSettings, setPetAvatar, resetPetAvatar } from "@/api/settings";
-import type { AiModel, AppSettings } from "@/types";
+import type { AiModel, AppSettings, McpServerConfig } from "@/types";
 import { detectLocale, setAppLocale, type AppLocale } from "@/i18n";
 import { initWindowPosition } from "@/lib/windowCtl";
 import { applyAccentColor, applyTheme, normalizeTheme } from "@/lib/theme";
@@ -83,6 +83,48 @@ function normalizeAiModels(value: unknown): AiModel[] {
     });
   }
   return models;
+}
+
+/** 生成 MCP 服务器配置 id（时间戳 + 随机后缀，足够本地唯一）。 */
+function genMcpServerId(): string {
+  return `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/** 归一化 MCP 服务器配置：剔除缺 id/名称的脏数据。 */
+function normalizeMcpServers(value: unknown): McpServerConfig[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const servers: McpServerConfig[] = [];
+  for (const item of value) {
+    if (typeof item !== "object" || item === null) {
+      continue;
+    }
+    const raw = item as Record<string, unknown>;
+    if (typeof raw.id !== "string" || !raw.id || typeof raw.name !== "string" || !raw.name) {
+      continue;
+    }
+    servers.push({
+      id: raw.id,
+      name: raw.name,
+      transport: raw.transport === "http" ? "http" : "stdio",
+      command: typeof raw.command === "string" ? raw.command : null,
+      args: Array.isArray(raw.args)
+        ? raw.args.filter((a): a is string => typeof a === "string")
+        : [],
+      env:
+        typeof raw.env === "object" && raw.env !== null
+          ? Object.fromEntries(
+              Object.entries(raw.env as Record<string, unknown>).filter(
+                (entry): entry is [string, string] => typeof entry[1] === "string"
+              )
+            )
+          : {},
+      url: typeof raw.url === "string" ? raw.url : null,
+      enabled: raw.enabled == null ? true : Boolean(raw.enabled),
+    });
+  }
+  return servers;
 }
 
 export const useConfigStore = defineStore("config", () => {
@@ -294,6 +336,49 @@ export const useConfigStore = defineStore("config", () => {
     schedulePersist();
   }
 
+  /** 新增 MCP 服务器配置，返回生成的 id。 */
+  async function addMcpServer(server: Omit<McpServerConfig, "id" | "enabled">): Promise<string> {
+    const id = genMcpServerId();
+    settings.value.mcp_servers = [
+      ...(settings.value.mcp_servers ?? []),
+      { ...server, id, enabled: true },
+    ];
+    schedulePersist();
+    return id;
+  }
+
+  /** 更新 MCP 服务器配置。 */
+  async function updateMcpServer(server: McpServerConfig) {
+    const list = settings.value.mcp_servers ?? [];
+    const idx = list.findIndex((s) => s.id === server.id);
+    if (idx === -1) {
+      return;
+    }
+    const next = [...list];
+    next[idx] = { ...server };
+    settings.value.mcp_servers = next;
+    schedulePersist();
+  }
+
+  /** 删除 MCP 服务器配置。 */
+  async function removeMcpServer(id: string) {
+    settings.value.mcp_servers = (settings.value.mcp_servers ?? []).filter((s) => s.id !== id);
+    schedulePersist();
+  }
+
+  /** 切换 MCP 服务器启用状态（停用由调用方负责断开连接）。 */
+  async function setMcpServerEnabled(id: string, enabled: boolean) {
+    const list = settings.value.mcp_servers ?? [];
+    const idx = list.findIndex((s) => s.id === id);
+    if (idx === -1) {
+      return;
+    }
+    const next = [...list];
+    next[idx] = { ...list[idx], enabled };
+    settings.value.mcp_servers = next;
+    schedulePersist();
+  }
+
   async function init() {
     platform.value = await getPlatform();
     const s = await getSettings();
@@ -323,6 +408,7 @@ export const useConfigStore = defineStore("config", () => {
       pomo_short_min: clampPomoMin(s.pomo_short_min),
       pomo_long_min: clampPomoMin(s.pomo_long_min),
       pet_clock: s.pet_clock == null ? true : Boolean(s.pet_clock),
+      mcp_servers: normalizeMcpServers(s.mcp_servers),
     };
     setAppLocale(locale);
     applyTheme(theme);
@@ -365,5 +451,9 @@ export const useConfigStore = defineStore("config", () => {
     setShowDock,
     setPomoMinutes,
     setPetClock,
+    addMcpServer,
+    updateMcpServer,
+    removeMcpServer,
+    setMcpServerEnabled,
   };
 });

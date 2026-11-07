@@ -1,16 +1,33 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { ArrowLeft } from "@element-plus/icons-vue";
 import { TOOLBOX_TOOLS } from "@/components/toolbox/registry";
+import { useUiStore } from "@/stores/ui";
 
 const { t } = useI18n();
+const ui = useUiStore();
 
 /** 当前打开的工具 ID；null 表示工具箱首页 */
 const activeId = ref<string | null>(null);
 
 const activeTool = computed(() => TOOLBOX_TOOLS.find((tool) => tool.id === activeId.value) ?? null);
 const activeComponent = computed(() => activeTool.value?.component);
+
+// AI open_tool 等外部深链：消费 ui.toolboxTool 后立即清空，避免下次进入工具箱重复打开
+watch(
+  () => ui.toolboxTool,
+  (id) => {
+    if (!id) {
+      return;
+    }
+    if (TOOLBOX_TOOLS.some((tool) => tool.id === id)) {
+      activeId.value = id;
+    }
+    ui.toolboxTool = null;
+  },
+  { immediate: true }
+);
 </script>
 
 <template>

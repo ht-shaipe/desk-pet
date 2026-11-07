@@ -1,4 +1,5 @@
 mod channel;
+mod mcp;
 mod paths;
 mod state;
 mod tauri_cmds;
@@ -80,6 +81,11 @@ pub fn run() {
             tauri_cmds::channel_cmds::channel_stop,
             tauri_cmds::channel_cmds::channel_task_ack,
             tauri_cmds::channel_cmds::channel_task_progress,
+            tauri_cmds::mcp_cmds::mcp_connect,
+            tauri_cmds::mcp_cmds::mcp_disconnect,
+            tauri_cmds::mcp_cmds::mcp_server_tools,
+            tauri_cmds::mcp_cmds::mcp_call_tool,
+            tauri_cmds::mcp_cmds::mcp_server_status,
         ])
         .setup(|app| {
             use tauri::{Listener, Manager};
@@ -132,6 +138,8 @@ pub fn run() {
             }
             tray::create_tray(handle, &locale, &app_name)?;
             tauri_cmds::clipboard_cmds::start_poll(handle.clone());
+            // MCP：静默连接启用的外部服务器（失败只记日志）
+            mcp::connect_enabled_at_startup(handle);
 
             // 界面语言切换时重建托盘菜单
             let h = handle.clone();

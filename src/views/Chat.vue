@@ -1,14 +1,29 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { computed, h, nextTick, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { ArrowRight, Delete, Edit, Plus, Position, VideoPause } from "@element-plus/icons-vue";
+import {
+  ArrowRight,
+  CircleCheck,
+  CircleClose,
+  Connection,
+  CopyDocument,
+  Delete,
+  Edit,
+  Loading,
+  Plus,
+  Position,
+  VideoPause,
+} from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { useConfigStore } from "@/stores/config";
-import { isModelReady, streamChatCompletion } from "@/api/ai";
+import { AiApiError, isModelReady, streamChatCompletion, type StreamChatResult } from "@/api/ai";
 import { launchItem } from "@/api/launcher";
+import { copyToClipboard } from "@/api/clipboard";
+import { mcpConnect, mcpDisconnect, mcpServerStatus } from "@/api/mcp";
 import { renderMarkdown } from "@/lib/md";
+import { SYSTEM_PROMPT, collectTools, type AggregatedTools, type ToolExecResult } from "@/lib/ai-tools";
 import { getChatMessages, addChatMessage, deleteChatMessage, clearChatMessages } from "@/api/chat";
-import type { AiModel, ChatEntry, ChatMessage } from "@/types";
+import type { AiModel, ChatEntry, ChatMessage, McpServerConfig, ToolCall } from "@/types";
 
 const { t } = useI18n();
 const config = useConfigStore();
@@ -23,13 +38,22 @@ const activeModel = computed<AiModel | null>(
 const messages = ref<ChatEntry[]>([]);
 /** 流式输出中的 assistant 占位（负数 id，未入库）。 */
 const pending = ref<ChatEntry | null>(null);
-const rendered = computed<ChatEntry[]>(() =>
-  pending.value ? [...messages.value, pending.value] : messages.value
-);
+/** 工具结果消息不单独成气泡，挂在 assistant 气泡的工具 chips 上。 */
+const rendered = computed<ChatEntry[]>(() => {
+  const list = messages.value.filter((m) => m.role !== "tool");
+  return pending.value ? [...list, pending.value] : list;
+});
 
 const input = ref("");
 const streaming = ref(false);
 let abortController: AbortController | null = null;
+
+/** agent 循环上限：超出后强制无工具收尾，防止死循环。 */
+const MAX_TOOL_ROUNDS = 8;
+/** 请求历史窗口：只回传最近若干条，避免无限增长。 */
+const HISTORY_WINDOW = 60;
+/** 当前会话模型是否不支持 function-calling（首次 4xx 后置位并降级为普通对话）。 */
+let toolsUnsupported = false;
 
 const listRef = ref<{ wrapRef: HTMLElement } | null>(null);
 
@@ -73,6 +97,74 @@ async function saveAssistant(content: string): Promise<void> {
   }
 }
 
+/** 组装请求历史：system prompt + 最近窗口内的持久化消息（修复被删出孤儿工具消息的记录）。 */
+function buildHistory(): ChatMessage[] {
+  const recent = messages.value.slice(-HISTORY_WINDOW);
+  const callIds = new Set<string>();
+  for (const m of recent) {
+    if (m.role === "assistant" && m.tool_calls) {
+      for (const call of toolCallsOf(m)) {
+        callIds.add(call.id);
+      }
+    }
+  }
+  const history: ChatMessage[] = [{ role: "system", content: SYSTEM_PROMPT }];
+  for (const m of recent) {
+    if (m.role === "tool") {
+      // tool 结果必须紧跟对应的 assistant.tool_calls；配对被删则整条跳过，避免 API 报错
+      if (m.tool_call_id && callIds.has(m.tool_call_id)) {
+        history.push({ role: "tool", content: m.content, tool_call_id: m.tool_call_id });
+      }
+    } else if (m.role === "assistant" && m.tool_calls) {
+      const calls = toolCallsOf(m);
+      // assistant 的 tool_calls 必须有全部配对的 tool 结果，否则降级为纯文本
+      const complete =
+        calls.length > 0 && calls.every((c) => recent.some((t) => t.role === "tool" && t.tool_call_id === c.id));
+      if (complete) {
+        history.push({ role: "assistant", content: m.content, tool_calls: calls });
+      } else {
+        history.push({ role: "assistant", content: m.content });
+      }
+    } else {
+      history.push({ role: m.role, content: m.content });
+    }
+  }
+  return history;
+}
+
+/** 执行一轮工具调用：逐个执行并持久化结果（role:"tool"），返回是否全部成功落库。 */
+async function runToolCalls(
+  calls: ToolCall[],
+  aggregated: AggregatedTools
+): Promise<void> {
+  for (const call of calls) {
+    let result: ToolExecResult;
+    if (abortController?.signal.aborted) {
+      result = { ok: false, text: "已中断 Interrupted" };
+    } else {
+      const executor = aggregated.executors.get(call.function.name);
+      let args: Record<string, unknown> = {};
+      try {
+        args = JSON.parse(call.function.arguments || "{}") as Record<string, unknown>;
+      } catch {
+        // 参数不合法时按空对象执行，让工具自己返回参数错误
+      }
+      try {
+        result = executor
+          ? await executor(args)
+          : { ok: false, text: `未知工具 Unknown tool: ${call.function.name}` };
+      } catch (err) {
+        result = { ok: false, text: `工具执行异常 Tool error: ${String(err)}` };
+      }
+    }
+    try {
+      messages.value.push(await addChatMessage("tool", JSON.stringify(result), undefined, call.id));
+    } catch (err) {
+      console.error("[desk-pet] 保存工具结果失败:", err);
+    }
+  }
+}
+
 async function send() {
   const text = input.value.trim();
   if (!text || streaming.value) {
@@ -99,24 +191,58 @@ async function send() {
   }
   input.value = "";
   messages.value.push(userMsg);
-  const history: ChatMessage[] = messages.value.map((m) => ({ role: m.role, content: m.content }));
-  pending.value = { id: -1, role: "assistant", content: "", created_at: 0 };
   streaming.value = true;
   abortController = new AbortController();
   try {
-    await streamChatCompletion({
-      model,
-      messages: history,
-      signal: abortController.signal,
-      onDelta: (delta) => {
-        if (pending.value) {
-          pending.value.content += delta;
+    const aggregated = toolsUnsupported ? null : await collectTools();
+    for (let round = 0; ; round += 1) {
+      // 轮次用尽后不再提供工具，强制模型给出文字结论
+      const allowTools = aggregated !== null && round < MAX_TOOL_ROUNDS;
+      pending.value = { id: -1, role: "assistant", content: "", created_at: 0 };
+      let result: StreamChatResult;
+      try {
+        result = await streamChatCompletion({
+          model,
+          messages: buildHistory(),
+          tools: allowTools && aggregated ? aggregated.definitions : undefined,
+          signal: abortController.signal,
+          onDelta: (delta) => {
+            if (pending.value) {
+              pending.value.content += delta;
+            }
+          },
+        });
+      } catch (err) {
+        // 部分 OpenAI 兼容服务不支持 tools 参数（400/404/422 等）：降级重试，本次会话不再携带
+        if (
+          aggregated &&
+          !toolsUnsupported &&
+          err instanceof AiApiError &&
+          err.status >= 400 &&
+          err.status < 500
+        ) {
+          toolsUnsupported = true;
+          ElMessage.info(t("chat.toolsUnsupported"));
+          continue;
         }
-      },
-    });
-    const content = pending.value?.content ?? "";
-    if (content) {
-      await saveAssistant(content);
+        throw err;
+      }
+      if (!allowTools || result.toolCalls.length === 0) {
+        const content = result.content;
+        if (content) {
+          await saveAssistant(content);
+        }
+        return;
+      }
+      // 工具轮：持久化带 tool_calls 的 assistant 消息（气泡上显示工具 chips）
+      const assistantMsg = await addChatMessage("assistant", result.content, result.toolCalls);
+      messages.value.push(assistantMsg);
+      pending.value = null;
+      await runToolCalls(result.toolCalls, aggregated);
+      // 用户在工具执行期间点了停止：保留已产生的记录，结束本轮对话
+      if (abortController?.signal.aborted) {
+        return;
+      }
     }
   } catch (err) {
     const partial = pending.value?.content ?? "";
@@ -125,8 +251,10 @@ async function send() {
       : requestFailText(err, model);
     if (partial) {
       await saveAssistant(`${partial}\n\n(${msg})`);
-    } else {
+    } else if (abortController?.signal.aborted) {
       ElMessage.error(msg);
+    } else {
+      showRequestError(msg);
     }
   } finally {
     pending.value = null;
@@ -137,6 +265,36 @@ async function send() {
 
 function stop() {
   abortController?.abort();
+}
+
+/**
+ * 请求失败提示：toast 内嵌"复制"按钮，一键复制完整错误文本（便于反馈/排查）。
+ * 错误文本可能很长，须 break-all 且给足停留时间。
+ */
+function showRequestError(text: string) {
+  ElMessage({
+    type: "error",
+    showClose: true,
+    duration: 6000,
+    message: h("div", { class: "flex items-start gap-2.5" }, [
+      h("div", { class: "min-w-0 text-[12px] leading-[1.5] break-all" }, text),
+      h(
+        "span",
+        {
+          class:
+            "shrink-0 self-center cursor-pointer select-none text-[12px] font-medium underline underline-offset-2",
+          onClick: () => {
+            void copyToClipboard(text)
+              .then(() => ElMessage.success(t("common.copied")))
+              .catch((err: unknown) =>
+                ElMessage.error(t("common.copyFail", { err: String(err) }))
+              );
+          },
+        },
+        t("common.copy")
+      ),
+    ]),
+  });
 }
 
 /** Enter 发送；中文输入法选词确认（isComposing）不触发。 */
@@ -168,6 +326,47 @@ function onLinkClick(e: MouseEvent) {
   }).catch(() => undefined);
 }
 
+/** ---------- 工具调用 chips ---------- */
+
+/** 解析 assistant 消息持久化的 tool_calls JSON。 */
+function toolCallsOf(msg: ChatEntry): ToolCall[] {
+  if (!msg.tool_calls) {
+    return [];
+  }
+  try {
+    return JSON.parse(msg.tool_calls) as ToolCall[];
+  } catch {
+    return [];
+  }
+}
+
+/** 查找 tool 消息的执行结果（找不到视为执行中）。 */
+function toolResultOf(callId: string): ToolExecResult | null {
+  const m = messages.value.find((t) => t.role === "tool" && t.tool_call_id === callId);
+  if (!m) {
+    return null;
+  }
+  try {
+    return JSON.parse(m.content) as ToolExecResult;
+  } catch {
+    return { ok: false, text: m.content };
+  }
+}
+
+/** chips 展示名：mcp__<server>__<tool> 显示为 "server · tool"。 */
+function toolDisplayName(name: string): string {
+  const parts = name.split("__");
+  if (parts[0] === "mcp" && parts.length >= 3) {
+    return `${parts[1]} · ${parts.slice(2).join("__")}`;
+  }
+  return name;
+}
+
+/** chip 悬浮提示：完整参数 JSON（截断）。 */
+function toolArgsTitle(call: ToolCall): string {
+  return call.function.arguments.slice(0, 300);
+}
+
 /** 删除单条聊天记录。 */
 async function removeMessage(msg: ChatEntry) {
   if (msg.id <= 0) {
@@ -179,6 +378,21 @@ async function removeMessage(msg: ChatEntry) {
   } catch (err) {
     console.error("[desk-pet] 删除消息失败:", err);
     ElMessage.error(t("chat.deleteFail"));
+  }
+}
+
+/** 复制单条消息内容到剪贴板。 */
+async function copyMessage(msg: ChatEntry) {
+  const content = msg.content.trim();
+  if (!content) {
+    return;
+  }
+  try {
+    await copyToClipboard(content);
+    ElMessage.success(t("common.copied"));
+  } catch (err) {
+    console.error("[desk-pet] 复制消息失败:", err);
+    ElMessage.error(t("common.copyFail", { err: String(err) }));
   }
 }
 
@@ -268,6 +482,163 @@ async function removeModel(model: AiModel) {
   }
 }
 
+/** ---------- MCP 服务器管理 ---------- */
+const showMcp = ref(false);
+const mcpServers = computed<McpServerConfig[]>(() => config.settings.mcp_servers ?? []);
+/** 已连接的服务器 id（状态点） */
+const mcpConnectedIds = ref<Set<string>>(new Set());
+const mcpConnectingId = ref<string | null>(null);
+const mcpEditing = ref<McpServerConfig | null>(null);
+const mcpForm = ref({
+  name: "",
+  transport: "stdio" as "stdio" | "http",
+  command: "",
+  args: "",
+  env: "",
+  url: "",
+});
+
+watch(showMcp, (open) => {
+  if (open) {
+    void refreshMcpStatus();
+  }
+});
+
+async function refreshMcpStatus() {
+  try {
+    mcpConnectedIds.value = new Set(await mcpServerStatus());
+  } catch (err) {
+    console.error("[desk-pet] MCP 状态查询失败:", err);
+  }
+}
+
+function mcpStatus(server: McpServerConfig): "connected" | "connecting" | "off" {
+  if (mcpConnectingId.value === server.id) {
+    return "connecting";
+  }
+  return mcpConnectedIds.value.has(server.id) ? "connected" : "off";
+}
+
+function mcpStatusText(server: McpServerConfig): string {
+  const status = mcpStatus(server);
+  return t(
+    status === "connected"
+      ? "chat.mcpStatusOn"
+      : status === "connecting"
+        ? "chat.mcpStatusConnecting"
+        : "chat.mcpStatusOff"
+  );
+}
+
+function openMcpAdd() {
+  mcpEditing.value = null;
+  mcpForm.value = { name: "", transport: "stdio", command: "", args: "", env: "", url: "" };
+}
+
+function openMcpEdit(server: McpServerConfig) {
+  mcpEditing.value = server;
+  mcpForm.value = {
+    name: server.name,
+    transport: server.transport === "http" ? "http" : "stdio",
+    command: server.command ?? "",
+    args: (server.args ?? []).join(" "),
+    env: Object.entries(server.env ?? {})
+      .map(([k, v]) => `${k}=${v}`)
+      .join("\n"),
+    url: server.url ?? "",
+  };
+}
+
+/** 环境变量文本（每行 KEY=value）解析为对象。 */
+function parseEnvText(text: string): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const line of text.split(/\n+/)) {
+    const idx = line.indexOf("=");
+    if (idx > 0) {
+      env[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
+    }
+  }
+  return env;
+}
+
+async function saveMcpServer() {
+  const f = mcpForm.value;
+  if (!f.name.trim()) {
+    ElMessage.warning(t("chat.mcpNameRequired"));
+    return;
+  }
+  if (f.transport === "http" && !f.url.trim()) {
+    ElMessage.warning(t("chat.mcpUrlRequired"));
+    return;
+  }
+  const payload = {
+    name: f.name.trim(),
+    transport: f.transport,
+    command: f.transport === "stdio" ? f.command.trim() || null : null,
+    args: f.transport === "stdio" ? f.args.trim().split(/\s+/).filter(Boolean) : [],
+    env: f.transport === "stdio" ? parseEnvText(f.env) : {},
+    url: f.transport === "http" ? f.url.trim() || null : null,
+  };
+  if (mcpEditing.value) {
+    await config.updateMcpServer({ ...payload, id: mcpEditing.value.id, enabled: mcpEditing.value.enabled ?? true });
+    ElMessage.success(t("common.saved"));
+  } else {
+    const id = await config.addMcpServer(payload);
+    ElMessage.success(t("common.added"));
+    openMcpAdd();
+    // 新增后立即尝试连接，让用户马上看到状态
+    void connectMcp(id);
+  }
+}
+
+async function connectMcp(serverId: string) {
+  mcpConnectingId.value = serverId;
+  try {
+    await mcpConnect(serverId);
+    await refreshMcpStatus();
+    ElMessage.success(t("chat.mcpConnectOk"));
+  } catch (err) {
+    ElMessage.error(`${t("chat.mcpConnectFail")}: ${String(err)}`);
+  } finally {
+    mcpConnectingId.value = null;
+  }
+}
+
+async function disconnectMcp(serverId: string) {
+  try {
+    await mcpDisconnect(serverId);
+  } catch (err) {
+    console.error("[desk-pet] MCP 断开失败:", err);
+  }
+  await refreshMcpStatus();
+}
+
+async function toggleMcpEnabled(server: McpServerConfig, enabled: boolean) {
+  await config.setMcpServerEnabled(server.id, enabled);
+  if (enabled) {
+    void connectMcp(server.id);
+  } else {
+    void disconnectMcp(server.id);
+  }
+}
+
+async function removeMcpServer(server: McpServerConfig) {
+  try {
+    await ElMessageBox.confirm(t("chat.mcpDeleteConfirm", { name: server.name }), t("chat.mcpManager"), {
+      confirmButtonText: t("common.confirm"),
+      cancelButtonText: t("common.cancel"),
+      type: "warning",
+    });
+  } catch {
+    return;
+  }
+  void disconnectMcp(server.id);
+  await config.removeMcpServer(server.id);
+  if (mcpEditing.value?.id === server.id) {
+    openMcpAdd();
+  }
+}
+
 /** ---------- Vortex 推广位（AI API 中转服务） ---------- */
 const VORTEX_URL = "https://ht-shaipe.github.io/vortex/"; // 官网落地页，点击推广卡即在系统浏览器打开
 const VORTEX_API_URL = ""; // 中转接口地址，补充后显示"一键填入"按钮
@@ -301,7 +672,8 @@ function fillVortex() {
   <div class="view-root">
     <div class="view-toolbar">
       <span class="toolbar-title">{{ t("chat.title") }}</span>
-      <div class="inline-flex items-center gap-1">
+      <!-- 按钮组收紧间距：覆盖 EP 默认的 12px 相邻 margin 与 text 按钮左右内边距 -->
+      <div class="inline-flex items-center gap-1 [&_.el-button+.el-button]:ml-0 [&_.el-button]:px-1">
         <el-select
           v-if="models.length > 0"
           :model-value="activeId"
@@ -314,6 +686,13 @@ function fillVortex() {
         <el-button size="small" text type="primary" :icon="Plus" @click="openAdd(); showModels = true">
           {{ t("chat.addModel") }}
         </el-button>
+        <el-button
+          size="small"
+          text
+          :icon="Connection"
+          :title="t('chat.mcpManager')"
+          @click="showMcp = true"
+        />
         <el-button size="small" text :icon="Delete" :title="t('chat.clear')" @click="clearHistory" />
       </div>
     </div>
@@ -347,27 +726,66 @@ function fillVortex() {
             :class="[
               msg.role === 'user'
                 ? 'bg-dp-accent text-white rounded-br-[4px]'
-                : 'bg-dp-btn-bg text-dp-primary rounded-bl-[4px]',
+                : 'bg-[color-mix(in_srgb,var(--dp-accent)_12%,var(--dp-card-bg))] text-dp-primary rounded-bl-[4px]',
               msg.role !== 'user' && pending && msg.id < 0 ? 'chat-md-cursor' : '',
             ]"
             @click="msg.role === 'user' ? undefined : onLinkClick($event)"
           >
+            <!-- 工具调用 chips：assistant 气泡顶部，执行中有结果后原地变为成功/失败 -->
+            <div
+              v-if="msg.role !== 'user' && toolCallsOf(msg).length > 0"
+              class="mb-1.5 flex flex-wrap gap-1"
+            >
+              <span
+                v-for="call in toolCallsOf(msg)"
+                :key="call.id"
+                class="inline-flex max-w-full items-center gap-1 rounded-full bg-dp-panel-bg border border-dp-card-border py-px pl-2 pr-1.5 text-[10.5px] leading-[1.5] text-dp-secondary"
+                :title="toolArgsTitle(call)"
+              >
+                <el-icon
+                  :size="11"
+                  class="shrink-0"
+                  :class="toolResultOf(call.id) ? (toolResultOf(call.id)!.ok ? 'text-[#67c23a]' : 'text-[#f56c6c]') : 'animate-spin text-dp-tertiary'"
+                >
+                  <CircleCheck v-if="toolResultOf(call.id)?.ok" />
+                  <CircleClose v-else-if="toolResultOf(call.id)" />
+                  <Loading v-else />
+                </el-icon>
+                <span class="truncate font-mono">{{ toolDisplayName(call.function.name) }}</span>
+              </span>
+            </div>
             <span v-if="msg.role === 'user'" class="whitespace-pre-wrap">{{ msg.content }}</span>
             <div
-              v-else
+              v-else-if="msg.content"
               class="chat-md-body"
               v-html="renderMarkdown(msg.content)"
             />
           </div>
-          <el-button
-            v-if="msg.id > 0"
-            class="shrink-0 self-center w-5 h-5 min-w-5 p-0 my-0 mx-0.5 opacity-0 transition-opacity duration-150 ease-[ease] [.msg-row:hover_&]:opacity-55 [.msg-row_&]:hover:opacity-100"
-            text
-            size="small"
-            :icon="Delete"
-            :title="t('common.delete')"
-            @click="removeMessage(msg)"
-          />
+          <!-- 操作按钮组：用户消息（靠右）放气泡左侧，助手消息（靠左）放气泡右侧，上下排列 -->
+          <div
+            v-if="msg.content.trim() || msg.id > 0"
+            class="flex flex-col justify-center shrink-0 gap-0.5 mx-0.5 order-first [&_.el-button+_.el-button]:ml-0"
+            :class="msg.role === 'user' ? 'order-first' : 'order-last'"
+          >
+            <el-button
+              v-if="msg.content.trim()"
+              class="w-5 h-5 min-w-5 p-0 m-0 opacity-0 transition-opacity duration-150 ease-[ease] [.msg-row:hover_&]:opacity-55 [.msg-row_&]:hover:opacity-100"
+              text
+              size="small"
+              :icon="CopyDocument"
+              :title="t('common.copy')"
+              @click="copyMessage(msg)"
+            />
+            <el-button
+              v-if="msg.id > 0"
+              class="w-5 h-5 min-w-5 p-0 m-0 opacity-0 transition-opacity duration-150 ease-[ease] [.msg-row:hover_&]:opacity-55 [.msg-row_&]:hover:opacity-100"
+              text
+              size="small"
+              :icon="Delete"
+              :title="t('common.delete')"
+              @click="removeMessage(msg)"
+            />
+          </div>
         </div>
       </el-scrollbar>
     </div>
@@ -494,6 +912,105 @@ function fillVortex() {
         </div>
       </el-scrollbar>
     </el-dialog>
+
+    <!-- MCP 服务器管理：列表 + 添加/编辑表单 -->
+    <el-dialog
+      v-model="showMcp"
+      :title="t('chat.mcpManager')"
+      width="340px"
+      class="max-w-[calc(100vw-24px)] [&_.el-dialog\_\_body]:pt-3"
+      append-to-body
+    >
+      <el-scrollbar class="dp-scroll pr-1">
+        <div class="mb-1 text-[11px] font-semibold text-dp-secondary">{{ t("chat.mcpMyServers") }}</div>
+        <el-scrollbar max-height="150px" class="pr-1">
+          <div
+            v-for="s in mcpServers"
+            :key="s.id"
+            class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-dp-btn-bg"
+          >
+            <span
+              class="w-2 h-2 rounded-full shrink-0"
+              :class="mcpStatus(s) === 'connected' ? 'bg-[#67c23a]' : mcpStatus(s) === 'connecting' ? 'bg-dp-accent animate-pulse' : 'bg-dp-divider'"
+              :title="mcpStatusText(s)"
+            />
+            <div class="flex flex-col min-w-0 mr-auto">
+              <span class="overflow-hidden text-ellipsis whitespace-nowrap text-[13px] text-dp-primary">
+                {{ s.name }}
+                <span class="text-[10px] text-dp-tertiary">({{ s.transport === "http" ? "HTTP" : "stdio" }})</span>
+              </span>
+              <span class="overflow-hidden text-ellipsis whitespace-nowrap text-[11px] text-dp-muted">
+                {{ s.transport === "http" ? s.url : s.command }}
+              </span>
+            </div>
+            <div class="inline-flex items-center shrink-0 gap-1 [&_.el-button+_.el-button]:ml-0.5">
+              <el-switch
+                size="small"
+                :model-value="s.enabled ?? true"
+                :title="t('chat.mcpEnabled')"
+                @change="(v: string | number | boolean) => toggleMcpEnabled(s, Boolean(v))"
+              />
+              <el-button
+                v-if="mcpStatus(s) !== 'connected'"
+                size="small"
+                text
+                type="primary"
+                :loading="mcpConnectingId === s.id"
+                @click="connectMcp(s.id)"
+              >
+                {{ t("chat.mcpConnect") }}
+              </el-button>
+              <el-button v-else size="small" text @click="disconnectMcp(s.id)">
+                {{ t("chat.mcpDisconnect") }}
+              </el-button>
+              <el-button size="small" text :icon="Edit" @click="openMcpEdit(s)" />
+              <el-button size="small" text :icon="Delete" @click="removeMcpServer(s)" />
+            </div>
+          </div>
+          <el-empty v-if="mcpServers.length === 0" :description="t('chat.mcpEmpty')" :image-size="50" />
+        </el-scrollbar>
+        <el-divider class="my-3" />
+        <el-form
+          label-width="62px"
+          class="[&_.el-form-item]:mb-2.5 [&_.el-form-item]:items-center [&_.el-form-item\_\_label]:p-0 [&_.el-form-item\_\_label]:pr-2 [&_.el-form-item\_\_label]:text-[12px] [&_.el-form-item\_\_label]:font-medium [&_.el-form-item\_\_label]:leading-none [&_.el-form-item\_\_label]:text-dp-secondary"
+          @submit.prevent
+        >
+          <el-form-item :label="t('chat.mcpName')">
+            <el-input v-model="mcpForm.name" :placeholder="t('chat.mcpNamePh')" />
+          </el-form-item>
+          <el-form-item :label="t('chat.mcpType')">
+            <el-radio-group v-model="mcpForm.transport" size="small">
+              <el-radio-button value="stdio">stdio</el-radio-button>
+              <el-radio-button value="http">HTTP</el-radio-button>
+            </el-radio-group>
+          </el-form-item>
+          <template v-if="mcpForm.transport === 'stdio'">
+            <el-form-item :label="t('chat.mcpCommand')">
+              <el-input v-model="mcpForm.command" :placeholder="t('chat.mcpCommandPh')" />
+            </el-form-item>
+            <el-form-item :label="t('chat.mcpArgs')">
+              <el-input v-model="mcpForm.args" :placeholder="t('chat.mcpArgsPh')" />
+            </el-form-item>
+            <el-form-item :label="t('chat.mcpEnv')">
+              <el-input
+                v-model="mcpForm.env"
+                type="textarea"
+                :rows="2"
+                :placeholder="t('chat.mcpEnvPh')"
+              />
+            </el-form-item>
+          </template>
+          <el-form-item v-else :label="t('chat.mcpUrl')">
+            <el-input v-model="mcpForm.url" :placeholder="t('chat.mcpUrlPh')" clearable />
+          </el-form-item>
+          <div class="flex justify-end gap-2">
+            <el-button size="small" @click="openMcpAdd">{{ t("chat.newForm") }}</el-button>
+            <el-button size="small" type="primary" @click="saveMcpServer">
+              {{ t("common.confirm") }}
+            </el-button>
+          </div>
+        </el-form>
+      </el-scrollbar>
+    </el-dialog>
   </div>
 </template>
-

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { FolderOpened, Loading } from "@element-plus/icons-vue";
@@ -67,6 +67,18 @@ const plan = ref<RemovalPlan | null>(null);
 const removalMode = ref<CleanupRemovalMode>("trash");
 // 删除计划序号：选择变化或关闭复核后，旧请求的响应必须丢弃。
 let planSeq = 0;
+
+// 复核清单区块（打开时滚动到可见区，避免长列表下区块渲染在视口外像"没反应"）
+const reviewSectionRef = ref<HTMLElement | null>(null);
+
+watch(reviewOpen, (open) => {
+  if (!open) {
+    return;
+  }
+  void nextTick(() => {
+    reviewSectionRef.value?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+});
 
 function invalidatePlan() {
   planSeq += 1;
@@ -1204,6 +1216,7 @@ onBeforeUnmount(() => {
       <!-- 复核清单：targets / covered / blocked + 删除方式 -->
       <section
         v-if="reviewOpen"
+        ref="reviewSectionRef"
         class="mb-2 rounded-[10px] border border-[#e6a23c55] bg-dp-card-bg px-2.5 py-[9px]"
       >
         <div class="flex items-center gap-1.5">

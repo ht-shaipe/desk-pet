@@ -14,12 +14,18 @@ pub fn get_chat_messages(app: AppHandle) -> Vec<ChatEntry> {
 }
 
 #[tauri::command]
-pub fn add_chat_message(app: AppHandle, role: String, content: String) -> Result<ChatEntry, String> {
+pub fn add_chat_message(
+    app: AppHandle,
+    role: String,
+    content: String,
+    tool_calls: Option<String>,
+    tool_call_id: Option<String>,
+) -> Result<ChatEntry, String> {
     app.state::<AppState>()
         .store
         .lock()
         .unwrap()
-        .add_chat_message(&role, &content)
+        .add_chat_message(&role, &content, tool_calls.as_deref(), tool_call_id.as_deref())
         .map_err(|e| e.to_string())
 }
 

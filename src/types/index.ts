@@ -10,19 +10,83 @@ export interface AiModel {
   model: string;
 }
 
+/** OpenAI function-calling 的工具定义（发给模型的 tools 数组项）。 */
+export interface ToolDefinition {
+  type: "function";
+  function: {
+    name: string;
+    description: string;
+    /** JSON Schema */
+    parameters: Record<string, unknown>;
+  };
+}
+
+/** 模型返回的一次工具调用。 */
+export interface ToolCall {
+  id: string;
+  type: "function";
+  function: {
+    name: string;
+    /** JSON 字符串形式的入参 */
+    arguments: string;
+  };
+}
+
 export interface ChatMessage {
-  /** user | assistant */
+  /** user | assistant | tool | system */
   role: string;
   content: string;
+  /** assistant 消息携带的工具调用列表 */
+  tool_calls?: ToolCall[];
+  /** tool 消息对应的调用 id */
+  tool_call_id?: string;
 }
 
 /** 聊天消息（SQLite 持久化记录）。 */
 export interface ChatEntry {
   id: number;
-  /** user | assistant */
+  /** user | assistant | tool */
   role: string;
   content: string;
+  /** assistant 消息携带的工具调用列表（JSON 字符串） */
+  tool_calls?: string | null;
+  /** tool 消息对应的调用 id */
+  tool_call_id?: string | null;
   created_at: number;
+}
+
+/** MCP 服务器配置（stdio 子进程或 Streamable HTTP）。 */
+export interface McpServerConfig {
+  id: string;
+  name: string;
+  /** stdio | http，缺省 stdio */
+  transport?: "stdio" | "http" | null;
+  /** stdio：启动命令，如 npx / node */
+  command?: string | null;
+  /** stdio：命令参数 */
+  args?: string[];
+  /** stdio：附加环境变量 */
+  env?: Record<string, string>;
+  /** http：端点 URL */
+  url?: string | null;
+  /** 启用后随应用启动自动连接，缺省 true */
+  enabled?: boolean | null;
+}
+
+/** MCP 工具描述（Rust mcp_cmds 返回）。 */
+export interface McpToolDto {
+  name: string;
+  title?: string | null;
+  description?: string | null;
+  /** 工具入参 JSON Schema */
+  input_schema: unknown;
+}
+
+/** MCP 工具调用结果（Rust 聚合文本内容）。 */
+export interface McpToolResult {
+  ok: boolean;
+  text: string;
+  structured?: unknown | null;
 }
 
 export interface AppSettings {
@@ -57,6 +121,8 @@ export interface AppSettings {
   pomo_long_min?: number | null;
   /** 收起面板时在精灵下方显示时钟，缺省 true */
   pet_clock?: boolean | null;
+  /** MCP 服务器配置列表 */
+  mcp_servers?: McpServerConfig[] | null;
 }
 
 export type FavType = "repo" | "article" | "video" | "product" | "social" | "image" | "bookmark" | "note";

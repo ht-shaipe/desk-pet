@@ -23,14 +23,15 @@ pub fn save_launcher(app: AppHandle, config: LauncherConfig) -> Result<(), Strin
         .map_err(|e| e.to_string())
 }
 
+/// 启动项执行：进程派生可能触碰磁盘，async 避免阻塞主线程/UI。
 #[tauri::command]
-pub fn launch_item(item: LauncherItem) -> Result<(), String> {
+pub async fn launch_item(item: LauncherItem) -> Result<(), String> {
     deskpet_os::launch::launch(&item.item_type, &item.value).map_err(|e| e.to_string())
 }
 
 /// 提取系统应用图标为 PNG（缓存于数据目录 icons/），返回文件路径。
 #[tauri::command]
-pub fn get_app_icon(app: AppHandle, item: LauncherItem) -> Result<Option<String>, String> {
+pub async fn get_app_icon(app: AppHandle, item: LauncherItem) -> Result<Option<String>, String> {
     if item.item_type != "app" {
         return Ok(None);
     }
@@ -42,7 +43,7 @@ pub fn get_app_icon(app: AppHandle, item: LauncherItem) -> Result<Option<String>
 
 /// 按启动值（app 路径/名称）提取图标，供应用选择下拉列表展示。
 #[tauri::command]
-pub fn get_app_icon_by_value(app: AppHandle, value: String) -> Result<Option<String>, String> {
+pub async fn get_app_icon_by_value(app: AppHandle, value: String) -> Result<Option<String>, String> {
     let dir = crate::paths::data_dir(&app)?.join("icons");
     deskpet_os::icons::app_icon_png(&value, &dir)
         .map(|p| p.map(|path| path.to_string_lossy().into_owned()))
@@ -50,7 +51,8 @@ pub fn get_app_icon_by_value(app: AppHandle, value: String) -> Result<Option<Str
 }
 
 /// 枚举系统已安装应用，供启动项选择。
+/// 注意：Tauri 同步命令在主线程执行，目录扫描必须 async 以免卡 UI。
 #[tauri::command]
-pub fn list_apps() -> Vec<deskpet_os::apps::AppEntry> {
+pub async fn list_apps() -> Vec<deskpet_os::apps::AppEntry> {
     deskpet_os::apps::list_apps()
 }

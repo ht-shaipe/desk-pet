@@ -19,9 +19,11 @@ tauri = { version = "2", features = ["protocol-asset", "macos-private-api", "tra
 serde = { workspace = true }
 serde_json = { workspace = true }
 axum = "0.8"
-# rt/macros：channel 运行时使用 tokio::select! 与 spawn_blocking
-tokio = { version = "1", features = ["net", "rt", "sync", "time", "macros"] }
+# rt/macros：channel 运行时使用 tokio::select! 与 spawn_blocking；process/io-util：MCP stdio 传输
+tokio = { version = "1", features = ["net", "rt", "sync", "time", "macros", "process", "io-util"] }
 tokio-stream = "0.1"
+# MCP 官方 Rust SDK：client + stdio（子进程）/ streamable HTTP 两种客户端传输
+rmcp = { version = "0.8", features = ["client", "transport-child-process", "transport-streamable-http-client-reqwest"] }
 tauri-plugin-single-instance = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-global-shortcut = "2"

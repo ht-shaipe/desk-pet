@@ -80,8 +80,14 @@ pub struct LauncherConfig {
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct ChatEntry {
     pub id: i64,
-    /// user | assistant
+    /// user | assistant | tool
     pub role: String,
     pub content: String,
+    /// assistant 消息携带的工具调用列表（JSON 字符串），非工具轮为 None
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<String>,
+    /// tool 消息对应的调用 id（assistant.tool_calls[].id），其他角色为 None
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
     pub created_at: u64,
 }

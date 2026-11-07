@@ -162,6 +162,8 @@ CREATE TABLE IF NOT EXISTS chat_message (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     role TEXT NOT NULL,
     content TEXT NOT NULL,
+    tool_calls TEXT,
+    tool_call_id TEXT,
     created_at INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS favorite (
@@ -198,6 +200,9 @@ impl Store {
         let _ = conn.execute("ALTER TABLE clipboard ADD COLUMN copy_count INTEGER NOT NULL DEFAULT 1", []);
         // 旧表无 sig 列时补加（同上，幂等；图片内容签名）
         let _ = conn.execute("ALTER TABLE clipboard ADD COLUMN sig TEXT NOT NULL DEFAULT ''", []);
+        // 旧 chat_message 表无工具调用列时补加（同上，幂等；AI 工具调用持久化）
+        let _ = conn.execute("ALTER TABLE chat_message ADD COLUMN tool_calls TEXT", []);
+        let _ = conn.execute("ALTER TABLE chat_message ADD COLUMN tool_call_id TEXT", []);
         migrate_json(&conn, dir)?;
         // 便签功能并入收藏：启动即把 legacy notes 表迁入 favorite（幂等）
         let store = Self { conn };
@@ -398,30 +403,41 @@ impl Store {
     /// 全部聊天消息（按写入顺序）。
     pub fn list_chat_messages(&self) -> Result<Vec<ChatEntry>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, role, content, created_at FROM chat_message ORDER BY id",
+            "SELECT id, role, content, tool_calls, tool_call_id, created_at FROM chat_message ORDER BY id",
         )?;
         let rows = stmt.query_map([], |row| {
             Ok(ChatEntry {
                 id: row.get(0)?,
                 role: row.get(1)?,
                 content: row.get(2)?,
-                created_at: row.get::<_, i64>(3)? as u64,
+                tool_calls: row.get(3)?,
+                tool_call_id: row.get(4)?,
+                created_at: row.get::<_, i64>(5)? as u64,
             })
         })?;
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
     /// 追加一条聊天消息，返回带 id 的完整记录。
-    pub fn add_chat_message(&self, role: &str, content: &str) -> Result<ChatEntry> {
+    /// assistant 工具轮携带 `tool_calls`（JSON），tool 结果消息携带 `tool_call_id`。
+    pub fn add_chat_message(
+        &self,
+        role: &str,
+        content: &str,
+        tool_calls: Option<&str>,
+        tool_call_id: Option<&str>,
+    ) -> Result<ChatEntry> {
         let created_at = now_ms();
         self.conn.execute(
-            "INSERT INTO chat_message (role, content, created_at) VALUES (?1, ?2, ?3)",
-            rusqlite::params![role, content, created_at as i64],
+            "INSERT INTO chat_message (role, content, tool_calls, tool_call_id, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![role, content, tool_calls, tool_call_id, created_at as i64],
         )?;
         Ok(ChatEntry {
             id: self.conn.last_insert_rowid(),
             role: role.to_string(),
             content: content.to_string(),
+            tool_calls: tool_calls.map(|s| s.to_string()),
+            tool_call_id: tool_call_id.map(|s| s.to_string()),
             created_at,
         })
     }
@@ -721,18 +737,27 @@ mod tests {
         let store = Store::open(dir.path()).unwrap();
         assert!(store.list_chat_messages().unwrap().is_empty());
 
-        let m1 = store.add_chat_message("user", "你好").unwrap();
-        let m2 = store.add_chat_message("assistant", "你好！").unwrap();
-        assert!(m1.id < m2.id);
+        let m1 = store.add_chat_message("user", "你好", None, None).unwrap();
+        let calls = r#"[{"id":"c1","type":"function","function":{"name":"open_app","arguments":"{}"}}]"#;
+        let m2 = store
+            .add_chat_message("assistant", "", Some(calls), None)
+            .unwrap();
+        let m3 = store
+            .add_chat_message("tool", r#"{"ok":true,"text":"已启动"}"#, None, Some("c1"))
+            .unwrap();
+        assert!(m1.id < m2.id && m2.id < m3.id);
         let list = store.list_chat_messages().unwrap();
-        assert_eq!(list.len(), 2);
+        assert_eq!(list.len(), 3);
         assert_eq!(list[0].content, "你好");
         assert_eq!(list[1].role, "assistant");
+        assert_eq!(list[1].tool_calls.as_deref(), Some(calls));
+        assert_eq!(list[2].tool_call_id.as_deref(), Some("c1"));
 
         store.delete_chat_message(m1.id).unwrap();
         let list = store.list_chat_messages().unwrap();
-        assert_eq!(list.len(), 1);
+        assert_eq!(list.len(), 2);
         assert_eq!(list[0].id, m2.id);
+        assert_eq!(list[1].tool_call_id.as_deref(), Some("c1"));
 
         store.clear_chat_messages().unwrap();
         assert!(store.list_chat_messages().unwrap().is_empty());

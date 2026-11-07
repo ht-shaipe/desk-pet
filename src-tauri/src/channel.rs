@@ -276,7 +276,7 @@ fn handle_message(app: &AppHandle, msg: channel_client::channel::ServerMessage) 
             eprintln!("[channel]   payload 原文 = {:?}", push.payload);
             // 直接推送统一走屏幕大字浮层（notify 窗口）；
             // 需要可靠投递/回执的业务消息应走 TaskAssign，不走此路径。
-            show_notice(app, &push.payload);
+            show_notice(app, &push.payload, push.server_time);
             true
         }
         None => true,
@@ -285,7 +285,7 @@ fn handle_message(app: &AppHandle, msg: channel_client::channel::ServerMessage) 
 
 /// 把通知内容解析为 {title, message} 并转发到 notify 浮层窗口。
 /// 浮层窗口缺失时按需创建；创建失败才回退主窗口角落提示。
-fn show_notice(app: &AppHandle, payload: &str) {
+fn show_notice(app: &AppHandle, payload: &str, server_time: i64) {
     let (title, message) = parse_notice(payload);
     eprintln!("[channel]   解析结果     → title={title:?} message={message:?}");
 
@@ -295,7 +295,7 @@ fn show_notice(app: &AppHandle, payload: &str) {
             eprintln!("[channel] 浮层创建失败，回退主窗口角落提示");
             let _ = app.emit(
                 "channel://push",
-                json!({ "message_id": "", "message_type": "notice", "payload": payload, "server_time": 0 }),
+                json!({ "message_id": "", "message_type": "notice", "payload": payload, "server_time": server_time }),
             );
             return;
         }
@@ -306,7 +306,7 @@ fn show_notice(app: &AppHandle, payload: &str) {
             let _ = app.emit_to(
                 "notify",
                 "channel://push-notice",
-                json!({ "title": title, "message": message }),
+                json!({ "title": title, "message": message, "time": server_time }),
             );
         });
         return;
@@ -315,7 +315,7 @@ fn show_notice(app: &AppHandle, payload: &str) {
     let _ = app.emit_to(
         "notify",
         "channel://push-notice",
-        json!({ "title": title, "message": message }),
+        json!({ "title": title, "message": message, "time": server_time }),
     );
 }
 

@@ -3,6 +3,7 @@
  * - 监听 Rust 下发的 hello-ack / task-assign / task-cancel / upgrade / push 事件
  * - hello-ack：握手失败提示一次；pending_tasks 为断线期间补发任务，按 task-assign 同样处理
  * - task_type=1 升级：复用 useUpdater 检查并安装（force 时安装完自动重启）
+ * - task_type=4 检查更新：仅检查并提醒用户有新版本，不自动下载安装
  * - task_type=2/3 配置/指令：回执成功（前端可按 payload 自行扩展）
  * - push：Rust 侧统一转发屏幕大字浮层（notify 窗口）；本监听仅作浮层缺失时的角落通知兜底
  */
@@ -89,6 +90,26 @@ async function runUpgradeFlow(taskId: number | null, force: boolean): Promise<vo
   }
 }
 
+/** 检查更新流程：只检查并提醒（复用 updater 的版本去重/忽略/折叠态分流），不自动安装。taskId 为 null 时无需回执。 */
+async function runCheckUpdateFlow(taskId: number | null): Promise<void> {
+  if (upgrading) {
+    await reportProgress(taskId, 4, "merged into concurrent upgrade");
+    return;
+  }
+  await reportProgress(taskId, 3, "");
+  const found = await updater.checkForUpdate(true);
+  if (!found) {
+    if (updater.status.value === "error") {
+      await reportProgress(taskId, 5, updater.errorMsg.value);
+      return;
+    }
+    await reportProgress(taskId, 4, "no update");
+    return;
+  }
+  updater.notifyUpdate();
+  await reportProgress(taskId, 4, updater.updateInfo.value?.version ?? "");
+}
+
 /** 任务进度回执（便捷 Upgrade 消息无任务号，跳过）。 */
 async function reportProgress(taskId: number | null, status: number, result: string): Promise<void> {
   if (taskId == null) return;
@@ -101,6 +122,10 @@ async function handleTaskAssign(task: TaskAssignEvent): Promise<void> {
   await channelTaskAck(task_id, attempt, true, "").catch(() => undefined);
   if (task_type === 1) {
     await runUpgradeFlow(task_id, parseForce(payload));
+    return;
+  }
+  if (task_type === 4) {
+    await runCheckUpdateFlow(task_id);
     return;
   }
   await reportProgress(task_id, 4, "");
@@ -168,10 +193,13 @@ export async function initChannelListeners(): Promise<void> {
 
   unlisteners.push(
     await listen<PushEvent>("channel://push", (event) => {
-      const { message_type, payload } = event.payload;
+      const { message_type, payload, server_time } = event.payload;
       const parsed = parsePush(payload);
+      const d = new Date((server_time > 0 ? server_time : Date.now() / 1000) * 1000);
+      const pad = (n: number) => String(n).padStart(2, "0");
+      const full = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
       ElNotification({
-        title: parsed.title || message_type || i18n.global.t("channel.newMessage"),
+        title: `${parsed.title || message_type || i18n.global.t("channel.newMessage")} · ${full}`,
         message: parsed.content,
         type: "info",
         duration: 5000,

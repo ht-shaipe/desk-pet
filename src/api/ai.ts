@@ -1,6 +1,6 @@
 import { fetch } from "@tauri-apps/plugin-http";
 import type { ClientOptions } from "@tauri-apps/plugin-http";
-import type { AiModel, ChatMessage } from "@/types";
+import type { AiModel, ChatMessage, ToolCall, ToolDefinition } from "@/types";
 
 /** 拼接 base_url 与路径，容忍末尾斜杠缺失。 */
 function joinUrl(base: string, path: string): string {
@@ -68,12 +68,64 @@ export class AiApiError extends Error {
 /** OpenAI 兼容 /chat/completions 的流式响应分块。 */
 interface ChatCompletionChunk {
   choices?: Array<{
-    delta?: { content?: string | null };
+    delta?: {
+      content?: string | null;
+      /** 工具调用增量：按 index 分片拼接 id/name/arguments */
+      tool_calls?: Array<{
+        index?: number;
+        id?: string;
+        type?: string;
+        function?: { name?: string; arguments?: string };
+      }>;
+    };
   }>;
 }
 
-/** 从 SSE 行中提取增量文本；返回 null 表示结束（[DONE]）。 */
-function extractDelta(line: string): string | null | undefined {
+/** 流式工具调用累积器（OpenAI 分片：首片带 id/name，后续片只有 arguments 增量）。 */
+class ToolCallAccumulator {
+  private parts = new Map<number, { id: string; name: string; arguments: string }>();
+
+  push(fragments: NonNullable<NonNullable<ChatCompletionChunk["choices"]>[number]["delta"]>["tool_calls"]): void {
+    if (!fragments) {
+      return;
+    }
+    for (const f of fragments) {
+      const idx = typeof f.index === "number" ? f.index : this.parts.size;
+      const part = this.parts.get(idx) ?? { id: "", name: "", arguments: "" };
+      if (f.id) {
+        part.id = f.id;
+      }
+      if (f.function?.name) {
+        part.name = f.function.name;
+      }
+      if (f.function?.arguments) {
+        part.arguments += f.function.arguments;
+      }
+      this.parts.set(idx, part);
+    }
+  }
+
+  /** 汇总为完整 ToolCall 列表（按 index 顺序；缺 id 时按序补齐）。 */
+  finish(): ToolCall[] {
+    return [...this.parts.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([, p], i) => ({
+        id: p.id || `call_${Date.now().toString(36)}_${i}`,
+        type: "function",
+        function: { name: p.name, arguments: p.arguments },
+      }));
+  }
+
+  get size(): number {
+    return this.parts.size;
+  }
+}
+
+/** 从 SSE 行中提取增量：null 表示结束（[DONE]），undefined 表示行内无有效内容。 */
+function extractDelta(
+  line: string,
+  acc: ToolCallAccumulator
+): { text?: string } | null | undefined {
   if (line === "data: [DONE]") {
     return null;
   }
@@ -86,8 +138,12 @@ function extractDelta(line: string): string | null | undefined {
   }
   try {
     const chunk = JSON.parse(payload) as ChatCompletionChunk;
-    const choice = chunk.choices?.[0];
-    return choice?.delta?.content ?? undefined;
+    const delta = chunk.choices?.[0]?.delta;
+    if (delta?.tool_calls) {
+      acc.push(delta.tool_calls);
+    }
+    const content = delta?.content;
+    return typeof content === "string" && content.length > 0 ? { text: content } : undefined;
   } catch {
     return undefined;
   }
@@ -96,16 +152,24 @@ function extractDelta(line: string): string | null | undefined {
 export interface StreamChatOptions {
   model: AiModel;
   messages: ChatMessage[];
+  /** 可选工具列表：传入后模型可返回 tool_calls（OpenAI function-calling 格式） */
+  tools?: ToolDefinition[];
   signal?: AbortSignal;
   onDelta: (text: string) => void;
 }
 
+/** 一轮流式调用的结果：文本 + 工具调用（二者至少其一）。 */
+export interface StreamChatResult {
+  content: string;
+  toolCalls: ToolCall[];
+}
+
 /**
  * 调用 OpenAI 兼容接口流式输出回复。
- * 服务端不支持流式时回退为一次性返回完整文本。
+ * 服务端不支持流式时回退为一次性返回完整文本；支持 tools 时返回模型请求的工具调用。
  */
-export async function streamChatCompletion(options: StreamChatOptions): Promise<void> {
-  const { model, messages, signal, onDelta } = options;
+export async function streamChatCompletion(options: StreamChatOptions): Promise<StreamChatResult> {
+  const { model, messages, tools, signal, onDelta } = options;
   const url = joinUrl(model.base_url, "/chat/completions");
   const res = await fetchWithTlsFallback(url, {
     method: "POST",
@@ -116,7 +180,13 @@ export async function streamChatCompletion(options: StreamChatOptions): Promise<
     },
     body: JSON.stringify({
       model: model.model,
-      messages: messages.map((m) => ({ role: m.role, content: m.content })),
+      messages: messages.map((m) => ({
+        role: m.role,
+        content: m.content,
+        ...(m.tool_calls ? { tool_calls: m.tool_calls } : {}),
+        ...(m.tool_call_id ? { tool_call_id: m.tool_call_id } : {}),
+      })),
+      ...(tools && tools.length > 0 ? { tools } : {}),
       stream: true,
     }),
     signal,
@@ -135,20 +205,25 @@ export async function streamChatCompletion(options: StreamChatOptions): Promise<
     const text = await res.text();
     try {
       const data = JSON.parse(text) as {
-        choices?: Array<{ message?: { content?: string } }>;
+        choices?: Array<{
+          message?: { content?: string | null; tool_calls?: ToolCall[] };
+        }>;
       };
-      const content = data.choices?.[0]?.message?.content ?? "";
+      const message = data.choices?.[0]?.message;
+      const content = message?.content ?? "";
       if (content) {
         onDelta(content);
       }
-      return;
+      return { content, toolCalls: message?.tool_calls ?? [] };
     } catch {
       throw new AiApiError(0, "Invalid response JSON");
     }
   }
+  const acc = new ToolCallAccumulator();
   const reader = body.getReader();
   const decoder = new TextDecoder("utf-8");
   let buffer = "";
+  let content = "";
   for (;;) {
     const { done, value } = await reader.read();
     if (done) {
@@ -162,15 +237,17 @@ export async function streamChatCompletion(options: StreamChatOptions): Promise<
       if (!line) {
         continue;
       }
-      const delta = extractDelta(line);
+      const delta = extractDelta(line, acc);
       if (delta === null) {
-        return;
+        return { content, toolCalls: acc.finish() };
       }
-      if (typeof delta === "string" && delta.length > 0) {
-        onDelta(delta);
+      if (delta?.text) {
+        content += delta.text;
+        onDelta(delta.text);
       }
     }
   }
+  return { content, toolCalls: acc.finish() };
 }
 
 /** 校验模型配置是否具备调用条件。 */

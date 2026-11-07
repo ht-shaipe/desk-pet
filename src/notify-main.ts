@@ -9,6 +9,8 @@ import { i18n } from "@/i18n";
 interface SessionDonePayload {
   title: string;
   message: string;
+  /** 消息时间戳（秒，服务端 server_time）；缺省用当前时间 */
+  time?: number;
 }
 
 const LOGICAL_W = 460;
@@ -24,12 +26,21 @@ function setup(
   titleEl: HTMLElement,
   messageEl: HTMLElement,
   hintEl: HTMLElement,
+  timeEl: HTMLElement,
   closeBtn: HTMLElement
 ) {
+  /** 把时间戳（秒）格式化为完整日期时间 yyyy-MM-dd HH:mm:ss；无效值回退当前时间。 */
+  function formatTime(ts?: number): string {
+    const d = new Date((ts && ts > 0 ? ts : Date.now() / 1000) * 1000);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  }
+
   /** 按显示器缩放比例把窗口放到主屏上方约 24% 处并显示。 */
   async function showOverlay(payload: SessionDonePayload) {
     titleEl.textContent = payload.title || i18n.global.t("channel.newMessage");
     messageEl.textContent = payload.message;
+    timeEl.textContent = formatTime(payload.time);
     hintEl.textContent = i18n.global.t("pomodoro.overlayHint");
     card.classList.remove("hidden");
     try {
@@ -81,8 +92,9 @@ const card = document.getElementById("card");
 const titleEl = document.getElementById("title");
 const messageEl = document.getElementById("message");
 const hintEl = document.getElementById("hint");
+const timeEl = document.getElementById("time");
 const closeBtn = document.getElementById("close");
 
-if (card && titleEl && messageEl && hintEl && closeBtn) {
-  setup(card, titleEl, messageEl, hintEl, closeBtn);
+if (card && titleEl && messageEl && hintEl && timeEl && closeBtn) {
+  setup(card, titleEl, messageEl, hintEl, timeEl, closeBtn);
 }
