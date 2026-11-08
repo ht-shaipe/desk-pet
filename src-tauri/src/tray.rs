@@ -18,28 +18,39 @@ pub fn toggle_main(app: &AppHandle) {
     }
 }
 
-/// 按语言返回托盘文案：(显示/隐藏, 退出, tooltip)。tooltip 带自定义应用名。
-fn tray_texts(locale: &str, app_name: &str) -> (&'static str, &'static str, String) {
+/// 按语言返回托盘文案：(显示/隐藏, 悬浮监控, 退出, tooltip)。tooltip 带自定义应用名。
+fn tray_texts(
+    locale: &str,
+    app_name: &str,
+) -> (&'static str, &'static str, &'static str, String) {
     if locale.starts_with("zh") {
         (
             "显示/隐藏精灵",
+            "悬浮监控",
             "退出",
             format!("{app_name} 桌面精灵"),
         )
     } else {
-        ("Show / Hide Pet", "Quit", app_name.to_string())
+        (
+            "Show / Hide Pet",
+            "Floating Monitor",
+            "Quit",
+            app_name.to_string(),
+        )
     }
 }
 
 fn build_menu(app: &AppHandle, locale: &str) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
     use tauri::menu::{MenuBuilder, MenuItemBuilder};
 
-    let (toggle_s, quit_s, _) = tray_texts(locale, "");
+    let (toggle_s, monitorbar_s, quit_s, _) = tray_texts(locale, "");
     let toggle_item = MenuItemBuilder::with_id("toggle", toggle_s).build(app)?;
+    let monitorbar_item = MenuItemBuilder::with_id("monitorbar", monitorbar_s).build(app)?;
     let quit_item = MenuItemBuilder::with_id("quit", quit_s).build(app)?;
 
     MenuBuilder::new(app)
         .item(&toggle_item)
+        .item(&monitorbar_item)
         .item(&quit_item)
         .build()
 }
@@ -48,7 +59,7 @@ pub fn create_tray(app: &AppHandle, locale: &str, app_name: &str) -> tauri::Resu
     use tauri::tray::TrayIconBuilder;
 
     let menu = build_menu(app, locale)?;
-    let (_, _, tooltip_s) = tray_texts(locale, app_name);
+    let (_, _, _, tooltip_s) = tray_texts(locale, app_name);
 
     let icon = app
         .default_window_icon()
@@ -61,6 +72,14 @@ pub fn create_tray(app: &AppHandle, locale: &str, app_name: &str) -> tauri::Resu
         .menu(&menu)
         .on_menu_event(|app, event| match event.id().as_ref() {
             "toggle" => toggle_main(app),
+            // 状态广播由 monitorbar_toggle 内部完成（monitorbar://state）
+            "monitorbar" => {
+                let app = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    let _ =
+                        crate::tauri_cmds::monitor_cmds::monitorbar_toggle(app).await;
+                });
+            }
             "quit" => app.exit(0),
             _ => {}
         })
@@ -72,7 +91,7 @@ pub fn create_tray(app: &AppHandle, locale: &str, app_name: &str) -> tauri::Resu
 /// 语言切换或应用名变更时重建托盘菜单与提示文案。
 pub fn rebuild_tray(app: &AppHandle, locale: &str, app_name: &str) -> tauri::Result<()> {
     let menu = build_menu(app, locale)?;
-    let (_, _, tooltip_s) = tray_texts(locale, app_name);
+    let (_, _, _, tooltip_s) = tray_texts(locale, app_name);
     if let Some(tray) = app.tray_by_id("desk-pet-tray") {
         tray.set_menu(Some(menu))?;
         let _ = tray.set_tooltip(Some(tooltip_s));

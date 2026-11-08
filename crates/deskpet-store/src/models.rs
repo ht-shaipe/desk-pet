@@ -91,3 +91,50 @@ pub struct ChatEntry {
     pub tool_call_id: Option<String>,
     pub created_at: u64,
 }
+
+/// 图库目录（监控的图库根目录；全盘扫描为特殊条目）
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct ImageDir {
+    pub id: i64,
+    pub path: String,
+    /// 全盘扫描目录（跳过系统路径）
+    pub full_disk: bool,
+    pub added_at: u64,
+    pub last_scan_at: u64,
+    /// 已索引条目数（JOIN 计数，非表字段）
+    pub item_count: u64,
+}
+
+/// 图库条目：照片或文档（doc=1）。字段名保持 snake_case 与前端 TS 契约一致。
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct ImageItem {
+    pub id: i64,
+    pub dir_id: i64,
+    pub path: String,
+    pub name: String,
+    pub ext: String,
+    pub size: u64,
+    pub mtime: u64,
+    pub width: u32,
+    pub height: u32,
+    /// EXIF 拍摄时间（Unix 秒），无 EXIF 时为文件 mtime
+    pub taken_at: u64,
+    pub camera: String,
+    pub is_fav: bool,
+    /// true = 文档（pdf/docx 等），列表视图展示
+    pub doc: bool,
+    /// 缩略图文件名（data_dir/image_thumbs/ 下两级分桶），空 = 未生成
+    pub thumb: String,
+    /// blake3 内容哈希（仅同尺寸文件参与计算，用于精确去重）
+    pub hash: String,
+}
+
+/// 图片标签
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct ImageTag {
+    pub id: i64,
+    pub name: String,
+    pub color: String,
+    /// 使用该标签的条目数（列表查询填充，非表字段）
+    pub item_count: u64,
+}

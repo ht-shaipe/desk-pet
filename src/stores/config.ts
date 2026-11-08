@@ -1,9 +1,15 @@
-import { defineStore } from "pinia";
-import { ref } from "vue";
+import { acceptHMRUpdate, defineStore } from "pinia";
+import { ref, watch } from "vue";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { emit } from "@tauri-apps/api/event";
+import { emit, emitTo, listen } from "@tauri-apps/api/event";
 import { getPlatform, setShowDock as invokeSetShowDock } from "@/api/system";
 import { getSettings, saveSettings, setPetAvatar, resetPetAvatar } from "@/api/settings";
+import {
+  monitorbarToggle,
+  monitorMenubarSet,
+  monitorSample,
+  type MonitorChipSections,
+} from "@/api/monitor";
 import type { AiModel, AppSettings, McpServerConfig } from "@/types";
 import { detectLocale, setAppLocale, type AppLocale } from "@/i18n";
 import { initWindowPosition } from "@/lib/windowCtl";
@@ -53,6 +59,11 @@ function clampPomoMin(value: number | null | undefined): number | null {
     return null;
   }
   return Math.min(120, Math.max(1, Math.round(value)));
+}
+
+/** 归一化监控刷新间隔：白名单 1000/2000/5000，非法回退 2000。 */
+function normalizeRefreshMs(value: number | null | undefined): number {
+  return value === 1000 || value === 2000 || value === 5000 ? value : 2000;
 }
 
 /** 生成模型配置 id（时间戳 + 随机后缀，足够本地唯一）。 */
@@ -138,6 +149,14 @@ export const useConfigStore = defineStore("config", () => {
     accent_color: null,
     app_name: DEFAULT_APP_NAME,
     pet_clock: true,
+    monitor_bar_open: false,
+    monitor_bar_click_through: false,
+    monitor_bar_cpu: true,
+    monitor_bar_mem: true,
+    monitor_bar_net: true,
+    monitor_menubar_open: false,
+    monitor_menubar_show_icon: true,
+    monitor_refresh_ms: 2000,
   });
   const platform = ref("");
   const windowMoving = ref(false);
@@ -336,6 +355,115 @@ export const useConfigStore = defineStore("config", () => {
     schedulePersist();
   }
 
+  /** 悬浮监控条开关（窗口开/关由 monitorbar_toggle 执行，这里只持久化并同步 UI）。 */
+  async function setMonitorBar(open: boolean) {
+    settings.value.monitor_bar_open = open;
+    schedulePersist();
+  }
+
+  /** 悬浮监控条鼠标穿透：持久化并实时推送给悬浮条窗口。 */
+  async function setMonitorBarClickThrough(value: boolean) {
+    settings.value.monitor_bar_click_through = value;
+    schedulePersist();
+    try {
+      await emitTo("monitorbar", "monitorbar://click-through", value);
+    } catch {
+      // 悬浮条未打开时推送失败可忽略
+    }
+  }
+
+  /** 悬浮监控条分区开关（CPU/内存/网速独立配置，持久化并实时推送悬浮条与菜单栏）。 */
+  async function setMonitorBarSections(patch: { cpu?: boolean; mem?: boolean; net?: boolean }) {
+    if (patch.cpu !== undefined) settings.value.monitor_bar_cpu = patch.cpu;
+    if (patch.mem !== undefined) settings.value.monitor_bar_mem = patch.mem;
+    if (patch.net !== undefined) settings.value.monitor_bar_net = patch.net;
+    schedulePersist();
+    const sections: MonitorChipSections = {
+      cpu: settings.value.monitor_bar_cpu === true,
+      mem: settings.value.monitor_bar_mem === true,
+      net: settings.value.monitor_bar_net === true,
+    };
+    try {
+      await emitTo("monitorbar", "monitorbar://sections", sections);
+    } catch {
+      // 悬浮条未打开时推送失败可忽略
+    }
+    // 菜单栏芯片共用同一组分区开关：立即重绘（无需等下一轮采样）
+    if (menubarTick !== undefined) {
+      void menubarTick();
+    }
+  }
+
+  /** 菜单栏监控文字开关（macOS：轮询采样并推给状态项）。 */
+  async function setMonitorMenubar(open: boolean) {
+    settings.value.monitor_menubar_open = open;
+    schedulePersist();
+  }
+
+  /** 菜单栏监控文字显示期间是否保留托盘图标（下一轮采样即生效）。 */
+  async function setMonitorMenubarIcon(show: boolean) {
+    settings.value.monitor_menubar_show_icon = show;
+    schedulePersist();
+  }
+
+  /** 监控刷新间隔（毫秒）：工具页、悬浮条、菜单栏三处共用。
+   *  持久化 + 实时推送悬浮条 + 菜单栏轮询即刻按新间隔重启。 */
+  async function setMonitorRefreshMs(ms: number) {
+    settings.value.monitor_refresh_ms = normalizeRefreshMs(ms);
+    schedulePersist();
+    try {
+      await emitTo("monitorbar", "monitorbar://refresh", settings.value.monitor_refresh_ms);
+    } catch {
+      // 悬浮条未打开时推送失败可忽略
+    }
+    if (menubarTimer !== undefined) {
+      stopMenubarLoop(false);
+      startMenubarLoop();
+    }
+  }
+
+  /* ---------- 菜单栏监控轮询（仅主窗口 init 内启动） ---------- */
+
+  let menubarTimer: ReturnType<typeof setInterval> | undefined;
+  /** 当前轮询的采样函数引用：分区切换时立即重绘菜单栏芯片 */
+  let menubarTick: (() => Promise<void>) | undefined;
+
+  function stopMenubarLoop(clear = true) {
+    if (menubarTimer !== undefined) {
+      clearInterval(menubarTimer);
+      menubarTimer = undefined;
+    }
+    menubarTick = undefined;
+    if (clear) {
+      void monitorMenubarSet(null, true).catch(() => undefined);
+    }
+  }
+
+  function startMenubarLoop() {
+    if (menubarTimer !== undefined) {
+      return;
+    }
+    const interval = normalizeRefreshMs(settings.value.monitor_refresh_ms);
+    const tick = async () => {
+      try {
+        const s = await monitorSample();
+        const sections: MonitorChipSections = {
+          cpu: settings.value.monitor_bar_cpu === true,
+          mem: settings.value.monitor_bar_mem === true,
+          net: settings.value.monitor_bar_net === true,
+        };
+        const any = sections.cpu || sections.mem || sections.net;
+        // 全部分区关闭时清除菜单栏芯片；图标开关实时读取
+        await monitorMenubarSet(any ? s : null, settings.value.monitor_menubar_show_icon === true, sections);
+      } catch {
+        // 静默失败，下轮重试
+      }
+    };
+    menubarTick = tick;
+    void tick();
+    menubarTimer = setInterval(() => void tick(), interval);
+  }
+
   /** 新增 MCP 服务器配置，返回生成的 id。 */
   async function addMcpServer(server: Omit<McpServerConfig, "id" | "enabled">): Promise<string> {
     const id = genMcpServerId();
@@ -409,6 +537,16 @@ export const useConfigStore = defineStore("config", () => {
       pomo_long_min: clampPomoMin(s.pomo_long_min),
       pet_clock: s.pet_clock == null ? true : Boolean(s.pet_clock),
       mcp_servers: normalizeMcpServers(s.mcp_servers),
+      monitor_bar_open: s.monitor_bar_open == null ? false : Boolean(s.monitor_bar_open),
+      monitor_bar_click_through:
+        s.monitor_bar_click_through == null ? false : Boolean(s.monitor_bar_click_through),
+      monitor_bar_cpu: s.monitor_bar_cpu == null ? true : Boolean(s.monitor_bar_cpu),
+      monitor_bar_mem: s.monitor_bar_mem == null ? true : Boolean(s.monitor_bar_mem),
+      monitor_bar_net: s.monitor_bar_net == null ? true : Boolean(s.monitor_bar_net),
+      monitor_menubar_open: s.monitor_menubar_open == null ? false : Boolean(s.monitor_menubar_open),
+      monitor_menubar_show_icon:
+        s.monitor_menubar_show_icon == null ? true : Boolean(s.monitor_menubar_show_icon),
+      monitor_refresh_ms: normalizeRefreshMs(s.monitor_refresh_ms),
     };
     setAppLocale(locale);
     applyTheme(theme);
@@ -422,6 +560,31 @@ export const useConfigStore = defineStore("config", () => {
       settings.value.sprite_size
     );
     await win.setAlwaysOnTop(settings.value.always_on_top);
+    // 悬浮监控条状态广播（工具页/托盘/悬浮条自身关闭都走同一事件）
+    await listen<boolean>("monitorbar://state", (event) => {
+      settings.value.monitor_bar_open = event.payload;
+      schedulePersist();
+    });
+    // 上次退出时悬浮条处于开启状态则自动恢复
+    if (settings.value.monitor_bar_open) {
+      try {
+        await monitorbarToggle();
+      } catch {
+        // 自动恢复失败不打断启动
+      }
+    }
+    // 菜单栏监控文字：随开关启停轮询（init 仅主窗口调用，避免多窗口重复轮询）
+    watch(
+      () => settings.value.monitor_menubar_open,
+      (open) => {
+        if (open) {
+          startMenubarLoop();
+        } else {
+          stopMenubarLoop();
+        }
+      },
+      { immediate: true }
+    );
   }
 
   return {
@@ -451,9 +614,20 @@ export const useConfigStore = defineStore("config", () => {
     setShowDock,
     setPomoMinutes,
     setPetClock,
+    setMonitorBar,
+    setMonitorBarClickThrough,
+    setMonitorBarSections,
+    setMonitorMenubar,
+    setMonitorMenubarIcon,
+    setMonitorRefreshMs,
     addMcpServer,
     updateMcpServer,
     removeMcpServer,
     setMcpServerEnabled,
   };
 });
+
+// 开发期热更新：store 修改后热替换已激活实例，避免组件拿到缺少新方法的旧实例
+if (import.meta.hot) {
+  import.meta.hot.accept(acceptHMRUpdate(useConfigStore, import.meta.hot));
+}

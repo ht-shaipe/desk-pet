@@ -59,11 +59,17 @@ const listRef = ref<{ wrapRef: HTMLElement } | null>(null);
 
 /** 滚动到消息底部。 */
 function scrollToEnd() {
+  // 双 nextTick + rAF:等视图切换过渡与消息内容(代码块/图片)布局完成后再定位,
+  // 否则进入标签页时会停在顶部而不是最新消息
   void nextTick(() => {
-    const wrap = listRef.value?.wrapRef;
-    if (wrap) {
-      wrap.scrollTop = wrap.scrollHeight;
-    }
+    void nextTick(() => {
+      requestAnimationFrame(() => {
+        const wrap = listRef.value?.wrapRef;
+        if (wrap) {
+          wrap.scrollTop = wrap.scrollHeight;
+        }
+      });
+    });
   });
 }
 
@@ -85,6 +91,8 @@ onMounted(async () => {
     console.error("[desk-pet] 聊天记录加载失败:", err);
   }
   scrollToEnd();
+  // 延时补一次:消息里的图片/代码块晚于首帧渲染会撑高内容,把定位重新压回底部
+  window.setTimeout(scrollToEnd, 180);
 });
 
 /** 把流式完成的回复写入 SQLite；失败时提示（内容已无法恢复）。 */

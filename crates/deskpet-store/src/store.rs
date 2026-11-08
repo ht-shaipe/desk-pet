@@ -120,6 +120,28 @@ fn iso_from_secs(secs: u64) -> String {
     )
 }
 
+/// 文档管理已随「图库仅图片」定位移除：启动时清理历史 doc 索引行与缩略图（幂等）。
+/// doc 行是早期版本扫描入库的，不清掉会持续污染去重/搜索结果。
+fn purge_doc_items(conn: &Connection, dir: &Path) {
+    let thumbs: Vec<String> = match conn
+        .prepare("SELECT thumb FROM image_item WHERE doc = 1 AND thumb != ''")
+        .and_then(|mut s| {
+            s.query_map([], |r| r.get::<_, String>(0))
+                .map(|rows| rows.filter_map(|r| r.ok()).collect())
+        }) {
+        Ok(v) => v,
+        Err(_) => return,
+    };
+    for t in &thumbs {
+        let _ = std::fs::remove_file(dir.join("image_thumbs").join(t));
+    }
+    let _ = conn.execute(
+        "DELETE FROM image_item_tag WHERE item_id IN (SELECT id FROM image_item WHERE doc = 1)",
+        [],
+    );
+    let _ = conn.execute("DELETE FROM image_item WHERE doc = 1", []);
+}
+
 /// Unix 毫秒 -> ISO（旧便签 updated_at 用）。
 fn iso_from_ms(ms: u64) -> String {
     iso_from_secs(ms / 1000)
@@ -180,11 +202,67 @@ CREATE TABLE IF NOT EXISTS favorite (
     category_name TEXT NOT NULL DEFAULT '',
     create_time TEXT NOT NULL DEFAULT '',
     update_time TEXT NOT NULL DEFAULT ''
-);";
+);
+CREATE TABLE IF NOT EXISTS image_dir (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    path TEXT NOT NULL UNIQUE,
+    full_disk INTEGER NOT NULL DEFAULT 0,
+    added_at INTEGER NOT NULL DEFAULT 0,
+    last_scan_at INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS image_item (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    dir_id INTEGER NOT NULL,
+    path TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL DEFAULT '',
+    ext TEXT NOT NULL DEFAULT '',
+    size INTEGER NOT NULL DEFAULT 0,
+    mtime INTEGER NOT NULL DEFAULT 0,
+    width INTEGER NOT NULL DEFAULT 0,
+    height INTEGER NOT NULL DEFAULT 0,
+    taken_at INTEGER NOT NULL DEFAULT 0,
+    camera TEXT NOT NULL DEFAULT '',
+    is_fav INTEGER NOT NULL DEFAULT 0,
+    doc INTEGER NOT NULL DEFAULT 0,
+    thumb TEXT NOT NULL DEFAULT '',
+    hash TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_image_item_taken ON image_item(taken_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_image_item_dir ON image_item(dir_id);
+CREATE INDEX IF NOT EXISTS idx_image_item_hash ON image_item(hash);
+CREATE TABLE IF NOT EXISTS image_tag (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    color TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS image_item_tag (
+    item_id INTEGER NOT NULL,
+    tag_id INTEGER NOT NULL,
+    PRIMARY KEY (item_id, tag_id)
+);
+CREATE TABLE IF NOT EXISTS doc_dir (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    path TEXT NOT NULL UNIQUE,
+    added_at INTEGER NOT NULL DEFAULT 0,
+    last_scan_at INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS doc_item (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    dir_id INTEGER NOT NULL,
+    path TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL DEFAULT '',
+    ext TEXT NOT NULL DEFAULT '',
+    size INTEGER NOT NULL DEFAULT 0,
+    mtime INTEGER NOT NULL DEFAULT 0,
+    added_at INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_doc_item_dir ON doc_item(dir_id);
+CREATE INDEX IF NOT EXISTS idx_doc_item_name ON doc_item(name);";
 
 /// 本地存储：SQLite（WAL），打开时建表并按需迁移旧 JSON 数据。
 pub struct Store {
-    conn: Connection,
+    /// crate 内模块共享(gallery.rs 等同 crate impl 也需访问)
+    pub(crate) conn: Connection,
 }
 
 impl Store {
@@ -204,6 +282,7 @@ impl Store {
         let _ = conn.execute("ALTER TABLE chat_message ADD COLUMN tool_calls TEXT", []);
         let _ = conn.execute("ALTER TABLE chat_message ADD COLUMN tool_call_id TEXT", []);
         migrate_json(&conn, dir)?;
+        purge_doc_items(&conn, dir);
         // 便签功能并入收藏：启动即把 legacy notes 表迁入 favorite（幂等）
         let store = Self { conn };
         store.migrate_legacy_notes()?;

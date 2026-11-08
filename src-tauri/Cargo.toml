@@ -18,6 +18,13 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = ["protocol-asset", "macos-private-api", "tray-icon"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
+base64 = { workspace = true }
+walkdir = { workspace = true }
+kamadak-exif = { workspace = true }
+blake3 = { workspace = true }
+trash = { workspace = true }
+image = { workspace = true }
+fast_image_resize = { workspace = true }
 axum = "0.8"
 # rt/macros：channel 运行时使用 tokio::select! 与 spawn_blocking；process/io-util：MCP stdio 传输
 tokio = { version = "1", features = ["net", "rt", "sync", "time", "macros", "process", "io-util"] }
@@ -31,6 +38,8 @@ tauri-plugin-autostart = "2"
 # dangerous-settings：允许 http::fetch 传入 danger 配置（仅用于本地/内网自签名证书的回退请求）
 tauri-plugin-http = { version = "2.8.3", features = ["dangerous-settings"] }
 tauri-plugin-dialog = "2"
+# anydoc：任意格式文档转 Markdown（PDF/DOCX/XLSX/PPTX/EPUB/ODT/CSV 等，纯 Rust，MIT）
+anydoc = "0.2.4"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 deskpet-store = { path = "../crates/deskpet-store" }

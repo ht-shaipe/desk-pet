@@ -9,7 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::{OsError, Result};
 
 /// 从 dataURL 解析图片扩展名与二进制内容。
-/// 支持 png / jpeg / webp，其他格式报错。
+/// 支持 png / jpeg / webp / gif / bmp，其他格式报错。
 pub fn decode_data_url(data_url: &str) -> Result<(&'static str, Vec<u8>)> {
     let (ext, b64) = if let Some(rest) = data_url.strip_prefix("data:image/png;base64,") {
         ("png", rest)
@@ -17,6 +17,10 @@ pub fn decode_data_url(data_url: &str) -> Result<(&'static str, Vec<u8>)> {
         ("jpg", rest)
     } else if let Some(rest) = data_url.strip_prefix("data:image/webp;base64,") {
         ("webp", rest)
+    } else if let Some(rest) = data_url.strip_prefix("data:image/gif;base64,") {
+        ("gif", rest)
+    } else if let Some(rest) = data_url.strip_prefix("data:image/bmp;base64,") {
+        ("bmp", rest)
     } else {
         return Err(OsError::Other("不是有效的图片 dataURL".into()));
     };
@@ -89,22 +93,8 @@ pub fn list_images(dir: &Path) -> Result<Vec<ImageFileInfo>> {
     Ok(files)
 }
 
-/// 将本地图片文件读取为 dataURL，供前端 canvas 压缩。
-pub fn read_image_data_url(path: &Path) -> Result<String> {
-    let ext = path
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(|e| e.to_ascii_lowercase())
-        .unwrap_or_default();
-    let mime = image_mime_by_ext(&ext)
-        .ok_or_else(|| OsError::Other("不支持的图片格式".into()))?;
-    let bytes = fs::read(path)?;
-    Ok(format!("data:{mime};base64,{}", BASE64.encode(bytes)))
-}
-
-/// 将压缩结果 dataURL 保存到 `dir/compressed/{stem}.min.{ext}`，不覆盖源文件。
-pub fn save_compressed_image(dir: &Path, src_name: &str, data_url: &str) -> Result<PathBuf> {
-    let (ext, bytes) = decode_data_url(data_url)?;
+/// 将压缩结果字节写入 `dir/compressed/{stem}.min.{ext}`，不覆盖源文件。
+pub fn write_compressed(dir: &Path, src_name: &str, ext: &str, bytes: &[u8]) -> Result<PathBuf> {
     let stem = Path::new(src_name)
         .file_stem()
         .and_then(|s| s.to_str())
@@ -126,6 +116,17 @@ pub fn reveal(path: &Path) {
     #[cfg(target_os = "windows")]
     let _ = Command::new("explorer")
         .arg(format!("/select,{}", path.to_string_lossy()))
+        .spawn();
+}
+
+/// 用系统默认程序打开文件(macOS `open` / Windows `explorer`)。
+pub fn open_path(path: &Path) {
+    #[cfg(target_os = "macos")]
+    let _ = Command::new("open").arg(path).spawn();
+
+    #[cfg(target_os = "windows")]
+    let _ = Command::new("explorer")
+        .arg(path.to_string_lossy().to_string())
         .spawn();
 }
 
@@ -196,7 +197,7 @@ mod tests {
     #[test]
     fn save_image_rejects_unknown_mime() {
         let dir = tempfile::tempdir().unwrap();
-        assert!(save_image(dir.path(), "data:image/bmp;base64,AAAA").is_err());
+        assert!(save_image(dir.path(), "data:image/tiff;base64,AAAA").is_err());
     }
 
     #[test]
@@ -217,22 +218,9 @@ mod tests {
     }
 
     #[test]
-    fn read_image_data_url_roundtrip() {
+    fn write_compressed_uses_min_naming() {
         let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("t.png");
-        fs::write(&file, b"\x89PNG\r\n\x1a\n").unwrap();
-        let url = read_image_data_url(&file).unwrap();
-        assert!(url.starts_with("data:image/png;base64,"));
-
-        let txt = dir.path().join("t.txt");
-        fs::write(&txt, b"nope").unwrap();
-        assert!(read_image_data_url(&txt).is_err());
-    }
-
-    #[test]
-    fn save_compressed_image_uses_min_naming() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = save_compressed_image(dir.path(), "photo-1.jpg", TINY_PNG).unwrap();
+        let path = write_compressed(dir.path(), "photo-1.jpg", "png", b"png-bytes").unwrap();
         assert_eq!(
             path,
             dir.path().join("compressed").join("photo-1.min.png")
@@ -241,8 +229,8 @@ mod tests {
     }
 
     #[test]
-    fn save_compressed_image_rejects_invalid_data() {
+    fn write_compressed_rejects_invalid_name() {
         let dir = tempfile::tempdir().unwrap();
-        assert!(save_compressed_image(dir.path(), "a.jpg", "bad").is_err());
+        assert!(write_compressed(dir.path(), "", "png", b"x").is_err());
     }
 }

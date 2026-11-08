@@ -5,7 +5,11 @@
   "windows": [
     "main",
     "analyzer",
-    "updater"
+    "updater",
+    "images",
+    "docs",
+    "http",
+    "monitorbar"
   ],
   "permissions": [
     "core:default",

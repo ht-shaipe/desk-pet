@@ -57,10 +57,12 @@ pub fn run() {
             tauri_cmds::toolbox_cmds::save_qr_png,
             tauri_cmds::toolbox_cmds::save_image,
             tauri_cmds::toolbox_cmds::list_image_files,
-            tauri_cmds::toolbox_cmds::read_image_data_url,
-            tauri_cmds::toolbox_cmds::save_compressed_image,
+            tauri_cmds::toolbox_cmds::compress_image_data,
+            tauri_cmds::toolbox_cmds::compress_image_file,
             tauri_cmds::toolbox_cmds::reveal_path,
             tauri_cmds::toolbox_cmds::http_request,
+            tauri_cmds::toolbox_cmds::document_convert,
+            tauri_cmds::toolbox_cmds::save_document_markdown,
             tauri_cmds::cleanup_cmds::disk_cleanup_scan,
             tauri_cmds::cleanup_cmds::disk_cleanup_plan,
             tauri_cmds::cleanup_cmds::disk_cleanup_delete,
@@ -86,7 +88,49 @@ pub fn run() {
             tauri_cmds::mcp_cmds::mcp_server_tools,
             tauri_cmds::mcp_cmds::mcp_call_tool,
             tauri_cmds::mcp_cmds::mcp_server_status,
+            tauri_cmds::docs_cmds::docs_open,
+            tauri_cmds::http_cmds::http_open,
+            tauri_cmds::docs_cmds::docs_add_dir,
+            tauri_cmds::docs_cmds::docs_list_dirs,
+            tauri_cmds::docs_cmds::docs_remove_dir,
+            tauri_cmds::docs_cmds::docs_scan_start,
+            tauri_cmds::docs_cmds::docs_task_cancel,
+            tauri_cmds::docs_cmds::docs_query,
+            tauri_cmds::docs_cmds::docs_delete_item,
+            tauri_cmds::images_cmds::images_open,
+            tauri_cmds::images_cmds::images_open_path,
+            tauri_cmds::images_cmds::images_add_dir,
+            tauri_cmds::images_cmds::images_list_dirs,
+            tauri_cmds::images_cmds::images_remove_dir,
+            tauri_cmds::images_cmds::images_scan_start,
+            tauri_cmds::images_cmds::images_task_cancel,
+            tauri_cmds::images_cmds::images_query,
+            tauri_cmds::images_cmds::images_detail,
+            tauri_cmds::images_cmds::images_set_fav,
+            tauri_cmds::images_cmds::images_delete_item,
+            tauri_cmds::images_cmds::images_list_tags,
+            tauri_cmds::images_cmds::images_item_tag_pairs,
+            tauri_cmds::images_cmds::images_add_tag,
+            tauri_cmds::images_cmds::images_rename_tag,
+            tauri_cmds::images_cmds::images_delete_tag,
+            tauri_cmds::images_cmds::images_set_item_tag,
+            tauri_cmds::images_cmds::images_dedup_start,
+            tauri_cmds::images_cmds::images_dup_groups,
+            tauri_cmds::images_cmds::images_delete_paths,
+            tauri_cmds::monitor_cmds::monitor_sample,
+            tauri_cmds::monitor_cmds::monitorbar_toggle,
+            tauri_cmds::monitor_cmds::monitor_menubar_set,
         ])
+        // img:// 图片数据源:缩略图与原图按 id 反查 DB,配合 WebView immutable 缓存。
+        // 异步注册:协议回调在主线程触发,解码/读盘必须丢到阻塞线程池,否则卡死整个界面
+        .register_asynchronous_uri_scheme_protocol("img", |ctx, request, responder| {
+            let app = ctx.app_handle().clone();
+            let uri = request.uri().to_string();
+            tauri::async_runtime::spawn_blocking(move || {
+                let response = tauri_cmds::images_cmds::handle_img_protocol(&app, &uri);
+                responder.respond(response);
+            });
+        })
         .setup(|app| {
             use tauri::{Listener, Manager};
 

@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { ElMessage } from "element-plus";
+import { docsOpen } from "@/api/docs";
+import { httpOpen } from "@/api/toolbox";
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { ArrowLeft } from "@element-plus/icons-vue";
@@ -10,6 +13,19 @@ const ui = useUiStore();
 
 /** 当前打开的工具 ID；null 表示工具箱首页 */
 const activeId = ref<string | null>(null);
+
+/** 文档管理/接口请求直开独立窗口,不进面板详情页 */
+async function openStandaloneWindow(id: "docconv" | "http") {
+  try {
+    if (id === "docconv") {
+      await docsOpen();
+    } else {
+      await httpOpen();
+    }
+  } catch (e) {
+    ElMessage.error(String(e));
+  }
+}
 
 const activeTool = computed(() => TOOLBOX_TOOLS.find((tool) => tool.id === activeId.value) ?? null);
 const activeComponent = computed(() => activeTool.value?.component);
@@ -56,7 +72,11 @@ watch(
           v-for="tool in TOOLBOX_TOOLS"
           :key="tool.id"
           class="flex items-center gap-2 p-2.5 bg-dp-card-bg border border-dp-card-border rounded-xl cursor-pointer text-left transition-all duration-150 ease-[ease] hover:border-dp-card-hover-border hover:shadow-dp-card-hover active:scale-[0.98]"
-          @click="activeId = tool.id"
+          @click="
+            tool.id === 'docconv' || tool.id === 'http'
+              ? openStandaloneWindow(tool.id)
+              : (activeId = tool.id)
+          "
         >
           <span
             class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-dp-tag-soft text-dp-accent shrink-0"

@@ -89,6 +89,18 @@ export interface McpToolResult {
   structured?: unknown | null;
 }
 
+/** 文档转换结果（document_convert 命令返回）。 */
+export interface DocumentConvertResult {
+  /** 转换出的 Markdown；needs_ocr 时为空串 */
+  markdown: string;
+  /** true：扫描版 PDF（无文本层），需要 OCR 才能提取内容 */
+  needs_ocr: boolean;
+  /** needs_ocr 时：无文本层的页码（1 起） */
+  ocr_pages: number[];
+  /** needs_ocr 时：PDF 总页数 */
+  page_count: number;
+}
+
 export interface AppSettings {
   pet_x: number | null;
   pet_y: number | null;
@@ -123,6 +135,20 @@ export interface AppSettings {
   pet_clock?: boolean | null;
   /** MCP 服务器配置列表 */
   mcp_servers?: McpServerConfig[] | null;
+  /** 悬浮监控条是否显示（主窗口启动时据此自动恢复） */
+  monitor_bar_open?: boolean | null;
+  /** 悬浮监控条鼠标穿透 */
+  monitor_bar_click_through?: boolean | null;
+  /** 悬浮监控条分区开关：CPU / 内存 / 网速，缺省均显示 */
+  monitor_bar_cpu?: boolean | null;
+  monitor_bar_mem?: boolean | null;
+  monitor_bar_net?: boolean | null;
+  /** 菜单栏监控文字（macOS 托盘标题）是否显示 */
+  monitor_menubar_open?: boolean | null;
+  /** 菜单栏监控文字显示期间是否保留桌宠托盘图标，缺省保留 */
+  monitor_menubar_show_icon?: boolean | null;
+  /** 监控刷新间隔（毫秒，1000/2000/5000）：工具页、悬浮条、菜单栏共用 */
+  monitor_refresh_ms?: number | null;
 }
 
 export type FavType = "repo" | "article" | "video" | "product" | "social" | "image" | "bookmark" | "note";
@@ -189,6 +215,206 @@ export interface ImageFileInfo {
   name: string;
   /** 文件大小（字节） */
   size: number;
+}
+
+/* ---------- 图片压缩（Rust 原生引擎，参考 PicLite） ---------- */
+
+/** 水印参数 */
+export interface CompressWatermarkOptions {
+  /** text = 文字水印，image = 图片水印，blind = 盲水印（简化实现） */
+  kind: "text" | "image" | "blind";
+  /** 水印文字 / 盲水印标识内容 */
+  text: string;
+  fontSize: number;
+  /** #RRGGBB */
+  color: string;
+  /** 0-100 */
+  opacity: number;
+  /** 顺时针旋转角度（度） */
+  rotation: number;
+  /** true = 铺满，false = 单枚 */
+  tiled: boolean;
+  /** 铺满密度 5-95，越大越密 */
+  density: number;
+  /** 单枚位置：center / top-left / top-right / bottom-left / bottom-right */
+  position: string;
+  /** 图片水印的 dataURL */
+  imageDataUrl: string;
+  /** 图片水印宽度相对宿主图宽的百分比 */
+  imageScale: number;
+  /** 盲水印强度 1-100 */
+  strength: number;
+}
+
+/** 图片压缩参数 */
+export interface CompressImageParams {
+  /** 编码质量 1-100（PNG ≥90 无损，<90 调色板有损） */
+  quality: number;
+  /** 长边上限，0 = 不限 */
+  maxDim: number;
+  /** auto = 智能择优（多格式竞速取最小），keep = 保持原格式 */
+  format: "auto" | "keep" | "jpeg" | "png" | "webp";
+  /** 目标体积（KB），0 = 关闭 */
+  targetKb: number;
+  watermark?: CompressWatermarkOptions;
+}
+
+/** 图片压缩结果 */
+export interface CompressImageResult {
+  /** 压缩结果 dataURL（单图预览时返回） */
+  dataUrl: string | null;
+  /** 批量写出时的落盘路径 */
+  outPath: string | null;
+  originalSize: number;
+  size: number;
+  width: number;
+  height: number;
+  /** 实际输出格式名：jpeg / png / webp / gif */
+  format: string;
+  ext: string;
+  /** 未达节省阈值，原样保留 */
+  kept: boolean;
+  animated: boolean;
+}
+
+/* ---------- 资料库（独立窗口，索引存 SQLite） ---------- */
+
+/** 图库目录（监控的扫描根目录；全盘扫描为特殊条目）。字段 snake_case 与 Rust 契约一致 */
+export interface ImageDirInfo {
+  id: number;
+  path: string;
+  full_disk: boolean;
+  added_at: number;
+  last_scan_at: number;
+  item_count: number;
+}
+
+/** 图库条目：照片或文档（doc=1） */
+export interface ImageItemInfo {
+  id: number;
+  dir_id: number;
+  path: string;
+  name: string;
+  ext: string;
+  size: number;
+  mtime: number;
+  width: number;
+  height: number;
+  /** EXIF 拍摄时间（Unix 秒），无 EXIF 时为 mtime */
+  taken_at: number;
+  camera: string;
+  is_fav: boolean;
+  doc: boolean;
+  /** 缩略图相对路径（image_thumbs/ 下），空 = 未生成 */
+  thumb: string;
+  hash: string;
+}
+
+export interface ImageTagInfo {
+  id: number;
+  name: string;
+  color: string;
+  item_count: number;
+}
+
+export interface ImageQueryDto {
+  dirId?: number;
+  favOnly?: boolean;
+  docOnly?: boolean;
+  tagId?: number;
+  search?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface ImagePage {
+  items: ImageItemInfo[];
+  hasMore: boolean;
+  total: number;
+}
+
+export interface ImageDetail {
+  item: ImageItemInfo;
+  tags: ImageTagInfo[];
+}
+
+export interface ImageDupGroup {
+  hash: string;
+  items: ImageItemInfo[];
+}
+
+/** 扫描进度事件载荷（images://scan-progress） */
+export interface ImageScanProgress {
+  dirId: number;
+  scanned: number;
+  added: number;
+  updated: number;
+  removed: number;
+  /** 缩略图并行生成进度 */
+  thumbsDone: number;
+  thumbsTotal: number;
+  done: boolean;
+}
+
+/** 批量删除结果 */
+export interface DupDeleteResult {
+  deleted: number;
+  /** 失败的 "路径: 原因" 列表(失败项保留在图库中) */
+  failed: string[];
+}
+
+/* ---------- 文档管理（独立窗口，索引存 SQLite） ---------- */
+
+export interface DocDirInfo {
+  id: number;
+  path: string;
+  added_at: number;
+  last_scan_at: number;
+  item_count: number;
+}
+
+export interface DocItemInfo {
+  id: number;
+  dir_id: number;
+  path: string;
+  name: string;
+  ext: string;
+  size: number;
+  mtime: number;
+  added_at: number;
+}
+
+export interface DocQueryDto {
+  dirId?: number;
+  search?: string;
+  /** mtime(默认)/ name / size / ext */
+  sortBy?: string;
+  sortOrder?: "asc" | "desc";
+  limit?: number;
+  offset?: number;
+}
+
+export interface DocPage {
+  items: DocItemInfo[];
+  hasMore: boolean;
+  total: number;
+}
+
+/** 扫描进度事件载荷（docs://scan-progress） */
+export interface DocsScanProgress {
+  dirId: number;
+  scanned: number;
+  added: number;
+  updated: number;
+  removed: number;
+  done: boolean;
+}
+
+/** 去重进度事件载荷（images://dedup-progress） */
+export interface ImageDedupProgress {
+  total: number;
+  done: number;
+  doneFlag: boolean;
 }
 
 /* ---------- 接口请求 ---------- */
@@ -413,4 +639,42 @@ export interface DiskMarkInfo {
   bytes: number;
   files: number;
   exists: boolean;
+}
+
+/* ---------- 系统监控 ---------- */
+
+/** CPU 采样：总体使用率与每核使用率（0-100）。 */
+export interface CpuSample {
+  usage: number;
+  cores: number[];
+}
+
+/** 内存采样（字节）。 */
+export interface MemorySample {
+  used: number;
+  total: number;
+}
+
+/** 网络采样：上下行速率（字节/秒）与开机以来累计流量（字节），已排除回环接口。 */
+export interface NetworkSample {
+  downRate: number;
+  upRate: number;
+  totalDown: number;
+  totalUp: number;
+}
+
+/** 磁盘卷空间采样（字节）。 */
+export interface VolumeSample {
+  name: string;
+  mount: string;
+  total: number;
+  available: number;
+}
+
+/** 一次系统采样快照。 */
+export interface MonitorSample {
+  cpu: CpuSample;
+  memory: MemorySample;
+  network: NetworkSample;
+  volumes: VolumeSample[];
 }

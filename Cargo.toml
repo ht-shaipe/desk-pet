@@ -12,7 +12,21 @@ thiserror = "2"
 tempfile = "3"
 plist = "1"
 fs4 = "0.12"
-image = { version = "0.25", default-features = false, features = ["png"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif", "bmp"] }
+# 图片压缩引擎（参考 PicLite）：libwebp 原生 WebP 编码、png crate 最优压缩、NeuQuant 有损 PNG、高频缩放
+webp = "0.3"
+png = "0.18"
+color_quant = "1.1"
+fast_image_resize = { version = "6", features = ["rayon"] }
+gif = "0.14"
+ab_glyph = "0.2"
+# 图片管理器（参考 lap）：目录递归扫描、EXIF 拍摄时间/相机、精确去重哈希、移废纸篓
+walkdir = "2"
+kamadak-exif = "0.6"
+blake3 = "1"
+trash = "5"
+# 系统监控（参考 LiteMonitor）：CPU/内存/网络速率/磁盘卷采样
+sysinfo = { version = "0.40", default-features = false, features = ["system", "disk", "network"] }
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]

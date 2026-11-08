@@ -122,6 +122,28 @@ pub struct AppSettings {
     /// MCP 服务器配置列表（AI 对话可调用的外部工具来源）
     #[serde(default)]
     pub mcp_servers: Vec<McpServerConfig>,
+    /// 悬浮监控条是否显示（主窗口启动时据此自动恢复）
+    #[serde(default)]
+    pub monitor_bar_open: Option<bool>,
+    /// 悬浮监控条鼠标穿透
+    #[serde(default)]
+    pub monitor_bar_click_through: Option<bool>,
+    /// 悬浮监控条分区开关：CPU / 内存 / 网速，缺省均显示
+    #[serde(default)]
+    pub monitor_bar_cpu: Option<bool>,
+    #[serde(default)]
+    pub monitor_bar_mem: Option<bool>,
+    #[serde(default)]
+    pub monitor_bar_net: Option<bool>,
+    /// 菜单栏监控文字（macOS 托盘标题）是否显示
+    #[serde(default)]
+    pub monitor_menubar_open: Option<bool>,
+    /// 菜单栏监控文字显示期间是否保留桌宠托盘图标，缺省保留
+    #[serde(default)]
+    pub monitor_menubar_show_icon: Option<bool>,
+    /// 监控刷新间隔（毫秒，1000/2000/5000）：工具页、悬浮条、菜单栏共用
+    #[serde(default)]
+    pub monitor_refresh_ms: Option<u32>,
 }
 
 impl Default for AppSettings {
@@ -152,6 +174,14 @@ impl Default for AppSettings {
             pomo_long_min: None,
             pet_clock: None,
             mcp_servers: Vec::new(),
+            monitor_bar_open: None,
+            monitor_bar_click_through: None,
+            monitor_bar_cpu: None,
+            monitor_bar_mem: None,
+            monitor_bar_net: None,
+            monitor_menubar_open: None,
+            monitor_menubar_show_icon: None,
+            monitor_refresh_ms: None,
         }
     }
 }
