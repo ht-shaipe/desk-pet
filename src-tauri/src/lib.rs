@@ -97,6 +97,7 @@ pub fn run() {
             tauri_cmds::docs_cmds::docs_scan_start,
             tauri_cmds::docs_cmds::docs_task_cancel,
             tauri_cmds::docs_cmds::docs_query,
+            tauri_cmds::docs_cmds::docs_list_exts,
             tauri_cmds::docs_cmds::docs_delete_item,
             tauri_cmds::images_cmds::images_open,
             tauri_cmds::images_cmds::images_open_path,

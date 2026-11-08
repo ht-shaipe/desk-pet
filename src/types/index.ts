@@ -387,11 +387,18 @@ export interface DocItemInfo {
 export interface DocQueryDto {
   dirId?: number;
   search?: string;
+  /** 扩展名精确过滤（小写，如 "pdf"） */
+  ext?: string;
   /** mtime(默认)/ name / size / ext */
   sortBy?: string;
   sortOrder?: "asc" | "desc";
   limit?: number;
   offset?: number;
+}
+
+export interface DocExtStat {
+  ext: string;
+  count: number;
 }
 
 export interface DocPage {

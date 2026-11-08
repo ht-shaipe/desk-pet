@@ -98,6 +98,11 @@ const removalMode = ref<CleanupRemovalMode>("trash");
 const review = ref<ReviewState>("closed");
 const reviewPlan = ref<RemovalPlan | null>(null);
 
+// 清理完成但未重扫：树仍是旧数据，状态条给出提示
+const staleAfterDelete = ref(false);
+// 本次删除流中已成功删除的路径（deleteDone 后从标记集中剔除）
+let deletedOkPaths: string[] = [];
+
 const disk = ref<DiskUsage | null>(null);
 const stream = ref<EventSource | null>(null);
 const activeJobId = ref("");
@@ -370,6 +375,7 @@ function handleEvent(data: CleanupEvent) {
       if (data.ok) {
         removal.removed += 1;
         removal.bytes += data.bytes;
+        deletedOkPaths.push(data.path);
       } else {
         removal.failed += 1;
       }
@@ -383,6 +389,21 @@ function handleEvent(data: CleanupEvent) {
       phase.value = "ready";
       invalidateReview();
       closeStream();
+      // 清理后不再自动全量重扫：只刷新磁盘占用并剔除已删除的标记；
+      // 树仍为上次扫描结果，用户可按需手动重扫（R / 重新扫描）。
+      const removedPaths = deletedOkPaths;
+      deletedOkPaths = [];
+      if (removedPaths.length > 0) {
+        markPaths.value = new Set(
+          [...markPaths.value].filter(
+            (path) =>
+              !removedPaths.some((removed) => path === removed || path.startsWith(`${removed}/`)),
+          ),
+        );
+        void refreshMarks();
+      }
+      void refreshDiskUsage();
+      staleAfterDelete.value = true;
       if (data.failed > 0) {
         ElMessage.warning(
           t("toolbox.tools.cleanup.deletePartial", {
@@ -403,8 +424,6 @@ function handleEvent(data: CleanupEvent) {
       ) {
         ElMessage.info(t("toolbox.tools.cleanup.freedExplain"));
       }
-      // 删除后自动重扫，树与免费空间同步刷新
-      void startScan();
       break;
     case "failed":
       closeStream();
@@ -435,6 +454,8 @@ async function startScan() {
   const keptMarks = markPaths.value;
   resetResults();
   markPaths.value = new Set(keptMarks);
+  staleAfterDelete.value = false;
+  deletedOkPaths = [];
   phase.value = "scanning";
   try {
     const job = await scanDiskAnalyze(rootPath.value);
@@ -593,6 +614,7 @@ async function confirmReview() {
   invalidateReview();
   phase.value = "deleting";
   Object.assign(removal, { removed: 0, failed: 0, bytes: 0, freedBytes: 0, failures: [] });
+  deletedOkPaths = [];
   try {
     const job = await deleteDiskAnalyze(scanId.value, paths, removalMode.value);
     connect(job.jobId, job.url);
@@ -888,6 +910,9 @@ onBeforeUnmount(() => {
           <span v-if="stats.truncated" class="text-[#e6a23c]">{{ t("analyzer.truncated") }}</span>
           <span v-if="!stats.complete" class="text-[#e6a23c]">
             {{ t("toolbox.tools.cleanup.incomplete") }}
+          </span>
+          <span v-if="staleAfterDelete" class="text-[#e6a23c]">
+            {{ t("analyzer.staleHint") }}
           </span>
           <span class="ml-auto text-dp-tertiary">{{ t("analyzer.shortcutHint") }}</span>
         </div>

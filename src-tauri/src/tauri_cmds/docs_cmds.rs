@@ -303,6 +303,7 @@ fn mtime_secs(meta: &fs::Metadata) -> u64 {
 pub struct DocQueryDto {
     pub dir_id: Option<i64>,
     pub search: String,
+    pub ext: Option<String>,
     pub sort_by: Option<String>,
     pub sort_order: Option<String>,
     pub limit: u32,
@@ -325,6 +326,7 @@ pub async fn docs_query(app: AppHandle, query: DocQueryDto) -> Result<DocPage, S
         let q = deskpet_store::DocQuery {
             dir_id: query.dir_id,
             search: query.search,
+            ext: query.ext,
             sort_by: query.sort_by,
             sort_order: query.sort_order,
             limit: query.limit,
@@ -337,6 +339,18 @@ pub async fn docs_query(app: AppHandle, query: DocQueryDto) -> Result<DocPage, S
             has_more,
             total,
         })
+    })
+    .await
+    .map_err(|e| format!("查询失败: {e}"))?
+}
+
+/// 按扩展名统计文档数量(侧栏类型筛选用)。
+#[tauri::command]
+pub async fn docs_list_exts(app: AppHandle) -> Result<Vec<deskpet_store::DocExtStat>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let store = state.store.lock().unwrap();
+        store.list_doc_exts().map_err(|e| e.to_string())
     })
     .await
     .map_err(|e| format!("查询失败: {e}"))?

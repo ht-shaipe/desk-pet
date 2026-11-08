@@ -35,12 +35,21 @@ pub struct DocQuery {
     pub dir_id: Option<i64>,
     /// 文件名子串搜索
     pub search: String,
+    /// 扩展名精确过滤(小写)
+    pub ext: Option<String>,
     /// 排序列:None/"mtime"/"name"/"size"/"ext"(白名单,非法值回退 mtime)
     pub sort_by: Option<String>,
     /// "asc" | "desc"(默认 desc)
     pub sort_order: Option<String>,
     pub limit: u32,
     pub offset: u64,
+}
+
+/// 文档类型统计。
+#[derive(Debug, serde::Serialize, Clone)]
+pub struct DocExtStat {
+    pub ext: String,
+    pub count: u64,
 }
 
 /// 扫描时单文件的最新元数据。
@@ -216,6 +225,10 @@ impl Store {
             sql.push_str(" AND dir_id = ?");
             args.push(Box::new(dir_id));
         }
+        if let Some(ext) = &q.ext {
+            sql.push_str(" AND ext = ?");
+            args.push(Box::new(ext.clone()));
+        }
         if !q.search.is_empty() {
             sql.push_str(" AND name LIKE ? ESCAPE '\\'");
             args.push(Box::new(format!(
@@ -259,6 +272,10 @@ impl Store {
             sql.push_str(" AND dir_id = ?");
             args.push(Box::new(dir_id));
         }
+        if let Some(ext) = &q.ext {
+            sql.push_str(" AND ext = ?");
+            args.push(Box::new(ext.clone()));
+        }
         if !q.search.is_empty() {
             sql.push_str(" AND name LIKE ? ESCAPE '\\'");
             args.push(Box::new(format!(
@@ -270,6 +287,20 @@ impl Store {
         let refs: Vec<&dyn rusqlite::types::ToSql> = args.iter().map(|a| a.as_ref()).collect();
         let n: i64 = stmt.query_row(refs.as_slice(), |r| r.get(0))?;
         Ok(n.max(0) as u64)
+    }
+
+    /// 按扩展名统计文档数量(数量降序)。
+    pub fn list_doc_exts(&self) -> Result<Vec<DocExtStat>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT ext, COUNT(*) FROM doc_item GROUP BY ext ORDER BY COUNT(*) DESC, ext ASC",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(DocExtStat {
+                ext: row.get(0)?,
+                count: row.get::<_, i64>(1)?.max(0) as u64,
+            })
+        })?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
     }
 }
 

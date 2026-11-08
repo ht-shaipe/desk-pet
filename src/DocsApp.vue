@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { ElMessage, ElMessageBox } from "element-plus";
+import { ElMessage, ElMessageBox, type TableInstance } from "element-plus";
 import {
   Aim,
   Close,
@@ -28,12 +28,13 @@ import {
   docsAddDir,
   docsDeleteItem,
   docsListDirs,
+  docsListExts,
   docsQuery,
   docsRemoveDir,
   docsScanStart,
   docsTaskCancel,
 } from "@/api/docs";
-import type { DocsScanProgress, DocDirInfo, DocItemInfo } from "@/types";
+import type { DocsScanProgress, DocDirInfo, DocExtStat, DocItemInfo } from "@/types";
 
 const { t, locale } = useI18n();
 
@@ -86,14 +87,28 @@ const scanChip = computed(() => {
 });
 
 const dirFilter = ref<number | null>(null);
+const exts = ref<DocExtStat[]>([]);
+const extFilter = ref<string | null>(null);
 /** 表头排序(服务端执行,分页顺序一致) */
 const sortBy = ref("mtime");
 const sortOrder = ref<"asc" | "desc">("desc");
+const tableRef = ref<TableInstance>();
+/** 回写默认排序箭头时拦截由此触发的 sort-change,避免递归 */
+let restoringSort = false;
 
 function onSortChange({ prop, order }: { prop: string; order: "ascending" | "descending" | null }) {
+  if (restoringSort) {
+    return;
+  }
   if (!order) {
+    // 点击表头取消排序:回退默认排序,并把箭头同步回默认列
     sortBy.value = "mtime";
     sortOrder.value = "desc";
+    restoringSort = true;
+    tableRef.value?.sort("mtime", "descending");
+    void nextTick(() => {
+      restoringSort = false;
+    });
   } else {
     sortBy.value = prop;
     sortOrder.value = order === "ascending" ? "asc" : "desc";
@@ -117,6 +132,18 @@ async function loadDirs() {
   }
 }
 
+async function loadExts() {
+  try {
+    exts.value = await docsListExts();
+    // 当前选中的类型已无文档时自动取消筛选
+    if (extFilter.value && !exts.value.some((e) => e.ext === extFilter.value)) {
+      extFilter.value = null;
+    }
+  } catch {
+    // 类型列表属增强展示,失败静默
+  }
+}
+
 async function loadMore() {
   if (loading.value) {
     return;
@@ -126,6 +153,7 @@ async function loadMore() {
     const page = await docsQuery({
       dirId: dirFilter.value ?? undefined,
       search: search.value,
+      ext: extFilter.value ?? undefined,
       sortBy: sortBy.value,
       sortOrder: sortOrder.value,
       limit: PAGE_SIZE,
@@ -154,7 +182,7 @@ function onMainScroll(e: Event) {
   }
 }
 
-watch([dirFilter, search], () => {
+watch([dirFilter, search, extFilter], () => {
   void refresh();
 });
 
@@ -198,6 +226,7 @@ async function removeDir(dir: DocDirInfo) {
       dirFilter.value = null;
     }
     await loadDirs();
+    await loadExts();
     await refresh();
   } catch (e) {
     ElMessage.error(String(e));
@@ -219,7 +248,7 @@ let unlisteners: UnlistenFn[] = [];
 
 onMounted(async () => {
   await syncAppearance();
-  await Promise.all([loadDirs(), refresh()]);
+  await Promise.all([loadDirs(), loadExts(), refresh()]);
   unlisteners.push(
     await listen<DocsScanProgress>("docs://scan-progress", (e) => {
       const p = e.payload;
@@ -229,6 +258,7 @@ onMounted(async () => {
           void refresh();
         }
         void loadDirs();
+        void loadExts();
         ElMessage.success(
           t("docs.scanDone", { n: p.scanned, a: p.added, u: p.updated, r: p.removed }),
         );
@@ -238,6 +268,11 @@ onMounted(async () => {
     }),
   );
   window.addEventListener("focus", syncAppearance);
+
+  // 进入时对所有已配置目录自动触发一轮增量扫描(静默,已在扫描中的会被忽略)
+  for (const d of dirs.value) {
+    void docsScanStart(d.id).catch(() => {});
+  }
 });
 
 onBeforeUnmount(() => {
@@ -332,6 +367,7 @@ async function deleteRow(row: DocItemInfo) {
     await docsDeleteItem(row.id);
     items.value = items.value.filter((i) => i.id !== row.id);
     await loadDirs();
+    await loadExts();
     ElMessage.success(t("docs.deleteDone"));
   } catch (e) {
     ElMessage.error(String(e));
@@ -415,73 +451,89 @@ async function deleteRow(row: DocItemInfo) {
             </span>
           </div>
         </div>
+        <div v-if="exts.length" class="p-2.5 border-t border-dp-divider">
+          <div class="text-[11px] font-medium text-dp-muted mb-1">
+            {{ t("docs.types") }}
+          </div>
+          <div
+            v-for="e in exts"
+            :key="e.ext"
+            class="flex items-center gap-1 px-1.5 py-1 rounded-md cursor-pointer text-[11px] leading-[1.6]"
+            :class="extFilter === e.ext ? 'bg-[var(--el-color-primary-light-9,#ecf5ff)] text-dp-accent' : 'text-dp-muted hover:bg-dp-btn-bg'"
+            @click="extFilter = extFilter === e.ext ? null : e.ext"
+          >
+            <span class="uppercase flex-1 min-w-0 truncate">{{ e.ext }}</span>
+            <span class="shrink-0 text-[10px] text-dp-tertiary">{{ e.count }}</span>
+          </div>
+        </div>
         <div class="p-2.5 border-t border-dp-divider text-[10px] leading-[1.6] text-dp-tertiary">
           {{ t("docs.sidebarHint") }}
         </div>
       </aside>
 
-      <!-- 主区:文档表格 -->
+      <!-- 主区:文档表格(始终挂载,避免刷新数据时卸载导致排序箭头丢失) -->
       <main class="flex-1 min-w-0 overflow-y-auto view-scroll" @scroll="onMainScroll">
-        <template v-if="items.length">
-          <div class="px-3 pt-3">
-            <el-table
-              :data="items"
-              size="small"
-              class="w-full"
-              :default-sort="{ prop: 'mtime', order: 'descending' }"
-              @sort-change="onSortChange"
-            >
-              <el-table-column prop="name" :label="t('docs.docName')" min-width="260" show-overflow-tooltip sortable="custom" />
-              <el-table-column prop="ext" :label="t('docs.docType')" width="90" sortable="custom">
-                <template #default="{ row }">
-                  <span class="text-[10.5px] px-1.5 py-0.5 rounded bg-dp-btn-bg text-dp-muted uppercase">
-                    {{ row.ext }}
-                  </span>
-                </template>
-              </el-table-column>
-              <el-table-column prop="size" :label="t('docs.docSize')" width="104" sortable="custom">
-                <template #default="{ row }">{{ fmtBytes(row.size) }}</template>
-              </el-table-column>
-              <el-table-column prop="mtime" :label="t('docs.docDate')" width="150" sortable="custom">
-                <template #default="{ row }">{{ fmtDate(row.mtime) }}</template>
-              </el-table-column>
-              <el-table-column :label="t('docs.docActions')" width="186" fixed="right">
-                <template #default="{ row }">
-                  <!-- 去掉 EP 相邻按钮默认边距并压缩内边距,避免固定列溢出裁切 -->
-                  <div class="flex items-center gap-1 [&_.el-button+.el-button]:ml-0 [&_.el-button]:!px-1.5">
-                    <el-button
-                      v-if="row.ext !== 'md'"
-                      size="small"
-                      text
-                      type="primary"
-                      :loading="convertingKey === row.path"
-                      @click="convertRow(row)"
-                    >
-                      {{ t("docs.convertMd") }}
-                    </el-button>
-                    <el-tooltip :content="t('docs.open')" placement="top">
-                      <el-button size="small" text :icon="FolderOpened" @click="imagesOpenPath(row.path)" />
-                    </el-tooltip>
-                    <el-tooltip :content="t('docs.locate')" placement="top">
-                      <el-button size="small" text :icon="Aim" @click="imagesRevealPath(row.path)" />
-                    </el-tooltip>
-                    <el-tooltip :content="t('docs.del')" placement="top">
-                      <el-button size="small" text type="danger" :icon="Delete" @click="deleteRow(row)" />
-                    </el-tooltip>
-                  </div>
-                </template>
-              </el-table-column>
-            </el-table>
-          </div>
-          <div v-if="loading" class="py-6 flex justify-center text-dp-tertiary">
-            <el-icon class="is-loading" :size="18"><Loading /></el-icon>
-          </div>
-        </template>
-        <el-empty v-else-if="!loading" :description="t('docs.emptyHint')" :image-size="72">
-          <el-button type="primary" size="small" :icon="FolderAdd" @click="pickDir">
-            {{ t("docs.addDir") }}
-          </el-button>
-        </el-empty>
+        <div class="px-3 pt-3">
+          <el-table
+            ref="tableRef"
+            :data="items"
+            size="small"
+            class="w-full"
+            :default-sort="{ prop: 'mtime', order: 'descending' }"
+            @sort-change="onSortChange"
+          >
+            <el-table-column prop="name" :label="t('docs.docName')" min-width="260" show-overflow-tooltip sortable="custom" />
+            <el-table-column prop="ext" :label="t('docs.docType')" width="90" sortable="custom">
+              <template #default="{ row }">
+                <span class="text-[10.5px] px-1.5 py-0.5 rounded bg-dp-btn-bg text-dp-muted uppercase">
+                  {{ row.ext }}
+                </span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="size" :label="t('docs.docSize')" width="104" sortable="custom">
+              <template #default="{ row }">{{ fmtBytes(row.size) }}</template>
+            </el-table-column>
+            <el-table-column prop="mtime" :label="t('docs.docDate')" width="150" sortable="custom">
+              <template #default="{ row }">{{ fmtDate(row.mtime) }}</template>
+            </el-table-column>
+            <el-table-column :label="t('docs.docActions')" width="186" fixed="right">
+              <template #default="{ row }">
+                <!-- 去掉 EP 相邻按钮默认边距并压缩内边距,避免固定列溢出裁切 -->
+                <div class="flex items-center gap-1 [&_.el-button+.el-button]:ml-0 [&_.el-button]:!px-1.5">
+                  <el-button
+                    v-if="row.ext !== 'md'"
+                    size="small"
+                    text
+                    type="primary"
+                    :loading="convertingKey === row.path"
+                    @click="convertRow(row)"
+                  >
+                    {{ t("docs.convertMd") }}
+                  </el-button>
+                  <el-tooltip :content="t('docs.open')" placement="top">
+                    <el-button size="small" text :icon="FolderOpened" @click="imagesOpenPath(row.path)" />
+                  </el-tooltip>
+                  <el-tooltip :content="t('docs.locate')" placement="top">
+                    <el-button size="small" text :icon="Aim" @click="imagesRevealPath(row.path)" />
+                  </el-tooltip>
+                  <el-tooltip :content="t('docs.del')" placement="top">
+                    <el-button size="small" text type="danger" :icon="Delete" @click="deleteRow(row)" />
+                  </el-tooltip>
+                </div>
+              </template>
+            </el-table-column>
+            <template #empty>
+              <el-empty v-if="!loading" :description="t('docs.emptyHint')" :image-size="72">
+                <el-button type="primary" size="small" :icon="FolderAdd" @click="pickDir">
+                  {{ t("docs.addDir") }}
+                </el-button>
+              </el-empty>
+            </template>
+          </el-table>
+        </div>
+        <div v-if="loading" class="py-6 flex justify-center text-dp-tertiary">
+          <el-icon class="is-loading" :size="18"><Loading /></el-icon>
+        </div>
       </main>
     </div>
 

@@ -11,6 +11,7 @@ import {
   CopyDocument,
   Download,
   FolderAdd,
+  FolderOpened,
   InfoFilled,
   Loading,
   Picture,
@@ -19,6 +20,7 @@ import {
   Search,
   Star,
   StarFilled,
+  TopRight,
   Warning,
 } from "@element-plus/icons-vue";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -231,8 +233,15 @@ function itemTagColors(it: ImageItemInfo): string[] {
 async function refresh() {
   items.value = [];
   hasMore.value = false;
+  // 过滤条件切换后回到顶部,避免停留在旧滚动位置看不到新列表头部
+  if (mainRef.value) {
+    mainRef.value.scrollTop = 0;
+  }
   await loadMore();
 }
+
+/** 主区滚动容器:切换筛选后复位滚动位置 */
+const mainRef = ref<HTMLElement | null>(null);
 
 async function loadMore() {
   if (loading.value || (view.value === "dups")) {
@@ -344,7 +353,8 @@ onMounted(async () => {
       const p = e.payload;
       if (p.done) {
         delete scanState[p.dirId];
-        if (p.removed > 0) {
+        // 新增/清理都刷新网格:否则扫描出的新照片不出现(计数更新但列表不变)
+        if (p.removed > 0 || p.added > 0) {
           void refresh();
         }
         void loadDirs();
@@ -377,6 +387,11 @@ onMounted(async () => {
   );
   window.addEventListener("keydown", onKeydown);
   window.addEventListener("focus", syncAppearance);
+
+  // 进入时对所有已配置目录自动触发一轮增量扫描(静默,已在扫描中的会被忽略)
+  for (const d of dirs.value) {
+    void imagesScanStart(d.id).catch(() => {});
+  }
 });
 
 onBeforeUnmount(() => {
@@ -452,6 +467,18 @@ function closeViewer() {
   viewer.item = null;
 }
 
+/** 从查看器跳转到照片所在目录:侧栏选中该目录并关闭查看器 */
+function goToItemDir() {
+  if (!viewer.item) {
+    return;
+  }
+  const dirId = viewer.item.dir_id;
+  closeViewer();
+  dirFilter.value = dirId;
+  favOnly.value = false;
+  tagFilter.value = null;
+}
+
 const viewerNav = computed(() => {
   const idx = viewer.item ? items.value.findIndex((i) => i.id === viewer.item?.id) : -1;
   return {
@@ -461,7 +488,7 @@ const viewerNav = computed(() => {
   };
 });
 
-function viewerStep(delta: number) {
+async function viewerStep(delta: number) {
   if (!viewer.item) {
     return;
   }
@@ -469,6 +496,16 @@ function viewerStep(delta: number) {
   const next = items.value[idx + delta];
   if (next) {
     openViewer(next);
+    return;
+  }
+  // 已到已加载列表末尾且还有下一页:加载后继续翻
+  if (delta > 0 && idx === items.value.length - 1 && hasMore.value && !loading.value) {
+    await loadMore();
+    const after = items.value.findIndex((i) => i.id === viewer.item?.id);
+    const upcoming = items.value[after + 1];
+    if (upcoming) {
+      openViewer(upcoming);
+    }
   }
 }
 
@@ -484,9 +521,9 @@ function onKeydown(e: KeyboardEvent) {
   if (e.key === "Escape") {
     closeViewer();
   } else if (e.key === "ArrowLeft") {
-    viewerStep(-1);
+    void viewerStep(-1);
   } else if (e.key === "ArrowRight") {
-    viewerStep(1);
+    void viewerStep(1);
   } else if (e.key.toLowerCase() === "i") {
     viewer.infoOpen = !viewer.infoOpen;
   }
@@ -1375,6 +1412,12 @@ async function deleteSelectedPhotos() {
         :placeholder="t('images.searchPh')"
         class="w-56 ml-auto"
       />
+      <span
+        v-if="view === 'photos' && total > 0"
+        class="text-[11px] text-dp-tertiary whitespace-nowrap"
+      >
+        {{ t("images.totalCount", { n: total }) }}
+      </span>
       <el-button
         v-if="view === 'photos'"
         size="small"
@@ -1523,7 +1566,7 @@ async function deleteSelectedPhotos() {
       </aside>
 
       <!-- 主区 -->
-      <main class="flex-1 min-w-0 overflow-y-auto view-scroll" @scroll="onMainScroll">
+      <main ref="mainRef" class="flex-1 min-w-0 overflow-y-auto view-scroll" @scroll="onMainScroll">
         <!-- 照片:按月分组网格 -->
         <template v-if="view === 'photos'">
           <template v-if="photoItems.length">
@@ -1554,7 +1597,15 @@ async function deleteSelectedPhotos() {
                     <el-icon :size="10"><Check /></el-icon>
                   </span>
                   <span
-                    v-else-if="itemTagColors(it).length"
+                    v-else
+                    class="absolute top-1 left-1 hidden group-hover:flex w-5 h-5 rounded-full bg-black/45 items-center justify-center text-white/90 cursor-pointer"
+                    :title="`${t('images.locate')} · ${parentDirOf(it.path)}`"
+                    @click.stop="imagesRevealPath(it.path)"
+                  >
+                    <el-icon :size="11"><FolderOpened /></el-icon>
+                  </span>
+                  <span
+                    v-if="itemTagColors(it).length"
                     class="absolute bottom-1 left-1 flex gap-0.5"
                   >
                     <span
@@ -2092,11 +2143,19 @@ async function deleteSelectedPhotos() {
           <button class="w-7 h-7 inline-flex items-center justify-center rounded-lg text-[14px] leading-none text-white/90 hover:bg-white/15" :title="t('images.tagEdit')" @click="viewer.infoOpen = !viewer.infoOpen">
             <el-icon :size="15"><InfoFilled /></el-icon>
           </button>
-          <button class="w-7 h-7 inline-flex items-center justify-center rounded-lg text-[14px] leading-none text-white/90 hover:bg-white/15" :title="t('images.copyImage')" @click="copyImage">⧉</button>
+          <button class="w-7 h-7 inline-flex items-center justify-center rounded-lg text-white/90 hover:bg-white/15" :title="t('images.copyImage')" @click="copyImage">
+            <el-icon :size="15"><CopyDocument /></el-icon>
+          </button>
           <button class="w-7 h-7 inline-flex items-center justify-center rounded-lg text-[14px] leading-none text-white/90 hover:bg-white/15" :title="t('images.compress')" @click="compressItem">⤓</button>
-          <button class="w-7 h-7 inline-flex items-center justify-center rounded-lg text-[14px] leading-none text-white/90 hover:bg-white/15" :title="t('images.locate')" @click="imagesRevealPath(viewer.item.path)">⊕</button>
-          <button class="w-7 h-7 inline-flex items-center justify-center rounded-lg text-[14px] leading-none text-white/90 hover:bg-white/15" :title="t('images.open')" @click="imagesOpenPath(viewer.item.path)">↗</button>
-          <button class="w-7 h-7 inline-flex items-center justify-center rounded-lg text-[14px] text-[var(--el-color-danger,#f56c6c)] hover:bg-white/15" :title="t('images.delete')" @click="removeCurrent">✕</button>
+          <button class="w-7 h-7 inline-flex items-center justify-center rounded-lg text-white/90 hover:bg-white/15" :title="t('images.locate')" @click="imagesRevealPath(viewer.item.path)">
+            <el-icon :size="15"><FolderOpened /></el-icon>
+          </button>
+          <button class="w-7 h-7 inline-flex items-center justify-center rounded-lg text-white/90 hover:bg-white/15" :title="t('images.open')" @click="imagesOpenPath(viewer.item.path)">
+            <el-icon :size="15"><TopRight /></el-icon>
+          </button>
+          <button class="w-7 h-7 inline-flex items-center justify-center rounded-lg text-[var(--el-color-danger,#f56c6c)] hover:bg-white/15" :title="t('images.delete')" @click="removeCurrent">
+            <el-icon :size="15"><Close /></el-icon>
+          </button>
           <span class="mx-1 w-px h-4 bg-white/25" />
           <button class="w-7 h-7 inline-flex items-center justify-center rounded-lg text-[14px] leading-none text-white/90 hover:bg-white/15" @click="viewer.scale = Math.min(8, viewer.scale * 1.25)">+</button>
           <span class="text-[11px] w-10 text-center tabular-nums">{{ Math.round(viewer.scale * 100) }}%</span>
@@ -2131,7 +2190,28 @@ async function deleteSelectedPhotos() {
             <span class="text-dp-tertiary">{{ t("images.camera") }}</span>
             <span class="text-dp-muted truncate">{{ viewer.item.camera }}</span>
           </div>
-          <div class="text-dp-tertiary break-all">{{ viewer.item.path }}</div>
+          <div class="flex justify-between gap-2">
+            <span class="text-dp-tertiary shrink-0">{{ t("images.dirOf") }}</span>
+            <span
+              class="text-dp-muted truncate cursor-pointer hover:text-dp-accent"
+              :title="`${t('images.locate')} · ${parentDirOf(viewer.item.path)}`"
+              @click="imagesRevealPath(parentDirOf(viewer.item.path))"
+            >
+              {{ parentDirOf(viewer.item.path) }}
+            </span>
+          </div>
+          <div
+            class="text-dp-tertiary break-all cursor-pointer hover:text-dp-muted"
+            :title="t('images.locate')"
+            @click="imagesRevealPath(viewer.item.path)"
+          >
+            {{ viewer.item.path }}
+          </div>
+          <div class="pt-1">
+            <el-button size="small" class="w-full" :icon="Search" @click="goToItemDir">
+              {{ t("images.viewDirOnly") }}
+            </el-button>
+          </div>
         </div>
         <div class="mt-3 pt-2 border-t border-dp-divider">
           <div class="text-[11px] font-medium text-dp-muted mb-1.5">{{ t("images.tagEdit") }}</div>
