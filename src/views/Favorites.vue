@@ -6,7 +6,7 @@ import { open as openFileDialog, save as saveFileDialog } from "@tauri-apps/plug
 import { CaretBottom, CaretRight, Close, Plus, Setting, MagicStick, Monitor, Cpu, Grid, SetUp, Connection, Coin, Link, Lock, Tickets, Memo, DataAnalysis, Cellphone, Platform, Aim, Film, Key, Files, More, Collection, CollectionTag, CopyDocument, Document, VideoCamera, Goods, ChatDotRound, Picture } from "@element-plus/icons-vue";
 import { useFavoritesStore } from "@/stores/favorites";
 import { useConfigStore } from "@/stores/config";
-import { autoPullFavorites, pullFavorites, pushFavorites, refreshRepoStats } from "@/composables/useStashCloud";
+import { autoPullFavorites, deleteFavoritesRemote, pullFavorites, pushFavorites, refreshRepoStats } from "@/composables/useStashCloud";
 import { launchItem } from "@/api/launcher";
 import { copyToClipboard } from "@/api/clipboard";
 import {
@@ -264,9 +264,22 @@ async function onOpen(item: Favorite) {
   }
 }
 
+/** 本地删除成功后同步删除云端副本（失败仅提示，不影响本地删除结果）。 */
+async function syncCloudDelete(urls: string[]): Promise<void> {
+  if (urls.length === 0) {
+    return;
+  }
+  try {
+    await deleteFavoritesRemote(urls);
+  } catch (e) {
+    ElMessage.warning(t("stash.delCloudFail", { err: String(e) }));
+  }
+}
+
 async function onRemove(item: Favorite) {
   try {
     await store.remove(item.url);
+    void syncCloudDelete([item.url]);
     ElMessage.success(t("stash.removed"));
   } catch (e) {
     ElMessage.error(t("stash.removeFail", { err: String(e) }));
@@ -571,7 +584,9 @@ async function onClearAll() {
     return;
   }
   try {
+    const urls = store.entries.map((e) => e.url);
     await store.clearAll();
+    void syncCloudDelete(urls);
   } catch (e) {
     ElMessage.error(t("stash.clearFail", { err: String(e) }));
     return;

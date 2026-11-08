@@ -196,6 +196,7 @@ export default {
     copied: "已复制",
     copyFail: "复制失败: {err}",
     removeFail: "删除失败: {err}",
+    delCloudFail: "云端删除同步失败，数据可能在下次拉取时恢复: {err}",
     saveFail: "保存失败: {err}",
     clearFail: "清空失败: {err}",
     dupTitle: "收藏已存在",

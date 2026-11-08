@@ -196,6 +196,7 @@ export default {
     copied: "Copied",
     copyFail: "Copy failed: {err}",
     removeFail: "Delete failed: {err}",
+    delCloudFail: "Cloud delete sync failed, data may reappear on next pull: {err}",
     saveFail: "Save failed: {err}",
     clearFail: "Clear failed: {err}",
     dupTitle: "Already favorited",

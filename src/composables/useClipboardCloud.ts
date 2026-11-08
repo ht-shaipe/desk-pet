@@ -10,6 +10,7 @@ import { useConfigStore } from "@/stores/config";
 import { useClipboardStore } from "@/stores/clipboard";
 import { mergeClipboardEntries } from "@/api/clipboard";
 import { normalizeServerTime, toServerTime } from "@/lib/stash";
+import { unwrapHub } from "@/lib/hub";
 import type { ClipEntry } from "@/types";
 
 const API_BASE = "https://hub.htui.cc/api/cms/clipboard";
@@ -67,6 +68,7 @@ export async function pushClipboard(): Promise<number> {
   if (!resp.ok) {
     throw new Error(`HTTP ${resp.status}`);
   }
+  unwrapHub<unknown>(await resp.text());
   return items.length;
 }
 
@@ -105,15 +107,16 @@ async function doPullClipboard(): Promise<ClipPullResult> {
       headers: authHeaders(token),
       body: JSON.stringify(body),
     });
+    const raw = await resp.text();
     if (!resp.ok) {
-      throw new Error(`HTTP ${resp.status}`);
+      throw new Error(`HTTP ${resp.status}${raw ? ` - ${raw.slice(0, 300)}` : ""}`);
     }
-    const data = (await resp.json()) as {
+    const data = unwrapHub<{
       items?: Record<string, unknown>[];
       deleted?: string[];
       nextCursor?: string;
       serverNow?: string;
-    };
+    }>(raw);
     for (const raw of data.items ?? []) {
       const mapped = serverToLocalClip(raw);
       if (mapped) {

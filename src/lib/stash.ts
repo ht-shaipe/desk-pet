@@ -219,6 +219,11 @@ export function toServerProject(f: Favorite): Record<string, unknown> {
 export function serverToLocal(p: Record<string, unknown>): Favorite | null {
   const url = typeof p.url === "string" ? p.url.trim() : "";
   if (!url) {
+    // 无 url 的条目无法入库；打出样例便于排查字段结构变化
+    console.debug(
+      "[stash-cloud] serverToLocal 丢弃无 url 条目:",
+      JSON.stringify(p).slice(0, 300),
+    );
     return null;
   }
   const category = typeof p.category === "number" ? p.category : 0;

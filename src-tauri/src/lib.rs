@@ -51,6 +51,7 @@ pub fn run() {
             tauri_cmds::system_cmds::quick_action,
             tauri_cmds::system_cmds::get_platform,
             tauri_cmds::system_cmds::set_show_dock,
+            tauri_cmds::system_cmds::debug_log,
             tauri_cmds::pointer_cmds::pointer_state,
             tauri_cmds::toolbox_cmds::get_clipboard_image,
             tauri_cmds::toolbox_cmds::set_clipboard_image,

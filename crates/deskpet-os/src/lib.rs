@@ -10,7 +10,8 @@ pub mod http;
 pub mod icons;
 pub mod imaging;
 pub mod launch;
-#[cfg(target_os = "macos")]
+// menubar 模块跨平台编译：ChipSections 是悬浮条/菜单栏共用的纯数据类型；
+// AppKit 状态项绘制仅在 macOS 编译（模块内 cfg 门控）
 pub mod menubar;
 pub mod monitor;
 mod proc;
