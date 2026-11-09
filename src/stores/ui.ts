@@ -43,13 +43,17 @@ export const useUiStore = defineStore("ui", () => {
 
   /** 深链到工具箱某个工具（展开面板 -> 切到工具箱 -> 打开指定工具详情）。 */
   function openToolboxTool(id: string) {
-    // 文档管理/接口请求是独立窗口,AI/编程式打开直接唤起窗口
+    // 文档管理/接口请求/文本对比是独立窗口,AI/编程式打开直接唤起窗口
     if (id === "docconv") {
       void import("@/api/docs").then((m) => m.docsOpen()).catch(() => undefined);
       return;
     }
     if (id === "http") {
       void import("@/api/toolbox").then((m) => m.httpOpen()).catch(() => undefined);
+      return;
+    }
+    if (id === "textdiff") {
+      void import("@/api/toolbox").then((m) => m.textDiffOpen()).catch(() => undefined);
       return;
     }
     toolboxTool.value = id;

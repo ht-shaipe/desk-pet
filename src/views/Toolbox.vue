@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ElMessage } from "element-plus";
 import { docsOpen } from "@/api/docs";
-import { httpOpen } from "@/api/toolbox";
+import { httpOpen, textDiffOpen } from "@/api/toolbox";
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { ArrowLeft } from "@element-plus/icons-vue";
@@ -14,13 +14,18 @@ const ui = useUiStore();
 /** 当前打开的工具 ID；null 表示工具箱首页 */
 const activeId = ref<string | null>(null);
 
-/** 文档管理/接口请求直开独立窗口,不进面板详情页 */
-async function openStandaloneWindow(id: "docconv" | "http") {
+/** 直开独立窗口的工具 id（点击卡片不进面板详情页） */
+const STANDALONE_WINDOW_IDS = new Set(["docconv", "http", "textdiff"]);
+
+/** 文档管理/接口请求/文本对比直开独立窗口,不进面板详情页 */
+async function openStandaloneWindow(id: string) {
   try {
     if (id === "docconv") {
       await docsOpen();
-    } else {
+    } else if (id === "http") {
       await httpOpen();
+    } else if (id === "textdiff") {
+      await textDiffOpen();
     }
   } catch (e) {
     ElMessage.error(String(e));
@@ -73,7 +78,7 @@ watch(
           :key="tool.id"
           class="flex items-center gap-2 p-2.5 bg-dp-card-bg border border-dp-card-border rounded-xl cursor-pointer text-left transition-all duration-150 ease-[ease] hover:border-dp-card-hover-border hover:shadow-dp-card-hover active:scale-[0.98]"
           @click="
-            tool.id === 'docconv' || tool.id === 'http'
+            STANDALONE_WINDOW_IDS.has(tool.id)
               ? openStandaloneWindow(tool.id)
               : (activeId = tool.id)
           "
