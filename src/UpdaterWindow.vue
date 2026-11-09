@@ -76,7 +76,12 @@ function onKeydown(event: KeyboardEvent) {
 onMounted(async () => {
   await syncAppearance();
   window.addEventListener("keydown", onKeydown);
-  await updater.checkForUpdate(true);
+  // 通道下发的升级/检查更新任务已置好状态时直接复用（本窗仅作可见面板），
+  // 避免 mount 重复检查把进行中的下载进度重置掉
+  const s = updater.status.value;
+  if (s === "idle" || s === "up-to-date" || (s === "error" && !updater.updateInfo.value)) {
+    await updater.checkForUpdate(true);
+  }
 });
 
 onBeforeUnmount(() => {

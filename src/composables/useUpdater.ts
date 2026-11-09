@@ -178,8 +178,9 @@ export function isVersionSkipped(version: string | null | undefined): boolean {
   return !!version && skippedVersion() === version;
 }
 
-/** 弹出「发现新版本」提示：面板展开走应用内通知；折叠态弹独立更新窗口。 */
-function notifyUpdateAvailable(): void {
+/** 弹出「发现新版本」提示：forceWindow（如服务端下发的检查更新任务）或折叠态
+ *  一律弹独立置顶更新窗口——pet 区的应用内通知太小，用户注意不到。 */
+function notifyUpdateAvailable(forceWindow = false): void {
   if (!updateInfo.value) {
     return;
   }
@@ -188,8 +189,8 @@ function notifyUpdateAvailable(): void {
     return;
   }
   notifiedVersion = version;
-  if (!useUiStore().expanded) {
-    // 折叠态：面板只有 72px，应用内通知没有可用空间，弹独立更新窗口
+  if (forceWindow || !useUiStore().expanded) {
+    // 弹独立更新窗口（折叠态面板只有 72px，也没有应用内通知的可用空间）
     void invoke("updater_open").catch(() => undefined);
     return;
   }
@@ -273,7 +274,7 @@ export function useUpdater() {
     startUpdateFromNotification,
     checkOnStartup,
     startPeriodicCheck,
-    /** 面板折叠态：弹独立更新窗口（内含忽略此版本/检查分流逻辑） */
+    /** 弹「发现新版本」提示：forceWindow=true（服务端下发任务）或折叠态弹独立更新窗口；面板展开走应用内通知 */
     notifyUpdate: notifyUpdateAvailable,
     isVersionSkipped,
   };

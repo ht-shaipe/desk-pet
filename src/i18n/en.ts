@@ -932,7 +932,6 @@ export default {
   channel: {
     newMessage: "New Message",
     helloFailed: "Channel handshake failed",
-    updateInstalled: "Update installed. Restart to apply.",
     noticeHint: "Click anywhere or press Esc to close",
   },
 };

@@ -8,6 +8,7 @@
  * - push：Rust 侧统一转发屏幕大字浮层（notify 窗口）；本监听仅作浮层缺失时的角落通知兜底
  */
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import { ElNotification } from "element-plus";
 import { i18n } from "@/i18n";
 import { channelTaskAck, channelTaskProgress } from "@/api/channel";
@@ -54,7 +55,9 @@ function parseForce(payload: string): boolean {
   }
 }
 
-/** 升级流程：检查 → 下载安装 → 回执；force 时安装完自动重启。taskId 为 null 表示便捷 Upgrade 消息，无需回执。 */
+/** 升级流程：检查 → 下载安装 → 回执；force 时安装完自动重启。
+ *  taskId 为 null 表示便捷 Upgrade 消息，无需回执。
+ *  提示不用 pet 区 ElNotification（太小看不到）：非强制升级弹独立置顶更新窗口实时展示进度。 */
 async function runUpgradeFlow(taskId: number | null, force: boolean): Promise<void> {
   if (upgrading) {
     await reportProgress(taskId, 4, "merged into concurrent upgrade");
@@ -65,8 +68,16 @@ async function runUpgradeFlow(taskId: number | null, force: boolean): Promise<vo
     await reportProgress(taskId, 3, "");
     const found = await updater.checkForUpdate(true);
     if (!found) {
+      if (updater.status.value === "error") {
+        await reportProgress(taskId, 5, updater.errorMsg.value);
+        return;
+      }
       await reportProgress(taskId, 4, "no update");
       return;
+    }
+    if (!force) {
+      // 独立置顶更新窗实时展示下载进度，完成后用户在窗口里点重启
+      void invoke("updater_open").catch(() => undefined);
     }
     await updater.downloadAndInstall();
     if (updater.status.value === "error") {
@@ -76,12 +87,6 @@ async function runUpgradeFlow(taskId: number | null, force: boolean): Promise<vo
     await reportProgress(taskId, 4, updater.updateInfo.value?.version ?? "");
     if (force) {
       await updater.relaunchApp();
-    } else {
-      ElNotification({
-        title: i18n.global.t("channel.updateInstalled"),
-        type: "success",
-        duration: 5000,
-      });
     }
   } catch (e) {
     await reportProgress(taskId, 5, String(e));
@@ -90,7 +95,8 @@ async function runUpgradeFlow(taskId: number | null, force: boolean): Promise<vo
   }
 }
 
-/** 检查更新流程：只检查并提醒（复用 updater 的版本去重/忽略/折叠态分流），不自动安装。taskId 为 null 时无需回执。 */
+/** 检查更新流程：只检查并提醒（复用 updater 的版本去重/忽略过滤），不自动安装。
+ *  taskId 为 null 时无需回执。提示强制走独立置顶更新窗口，不用 pet 区通知。 */
 async function runCheckUpdateFlow(taskId: number | null): Promise<void> {
   if (upgrading) {
     await reportProgress(taskId, 4, "merged into concurrent upgrade");
@@ -106,7 +112,7 @@ async function runCheckUpdateFlow(taskId: number | null): Promise<void> {
     await reportProgress(taskId, 4, "no update");
     return;
   }
-  updater.notifyUpdate();
+  updater.notifyUpdate(true);
   await reportProgress(taskId, 4, updater.updateInfo.value?.version ?? "");
 }
 
