@@ -7,6 +7,32 @@ use crate::models::{ChatEntry, ClipEntry, Favorite, LauncherConfig, LauncherItem
 
 const DB_FILE: &str = "deskpet.db";
 
+/// 目录的成员路径范围 [lo, hi):目录下文件 path 均以 "dir/" 开头。
+/// 利用 BINARY 排序取 hi = lo 末字节 +1,可走 path 唯一索引的范围扫描;
+/// 根目录("/")的 base 为空,匹配全部绝对路径。
+/// 文档/图库共用:嵌套目录共享同一份索引,成员关系按路径前缀而非 dir_id。
+pub(crate) fn dir_bounds(dir_path: &str) -> (String, String) {
+    let sep = std::path::MAIN_SEPARATOR;
+    let base = dir_path.trim_end_matches(sep);
+    let lo = format!("{base}{sep}");
+    // hi = lo 末字节(分隔符)+1:分隔符必为单字节 ASCII,+1 后仍是合法 UTF-8
+    let mut hi_bytes = lo.as_bytes().to_vec();
+    let last = hi_bytes.len() - 1;
+    hi_bytes[last] += 1;
+    let hi = String::from_utf8(hi_bytes).expect("分隔符 +1 仍是合法 UTF-8");
+    (lo, hi)
+}
+
+/// path 是否位于 dir 目录之下(按路径前缀)。
+pub(crate) fn path_under(path: &str, dir: &str) -> bool {
+    let sep = std::path::MAIN_SEPARATOR;
+    let base = dir.trim_end_matches(sep);
+    if base.is_empty() {
+        return path.starts_with(sep);
+    }
+    path.starts_with(&format!("{base}{sep}"))
+}
+
 /// 当前 Unix 时间戳（毫秒）。
 fn now_ms() -> u64 {
     std::time::SystemTime::now()
@@ -140,6 +166,55 @@ fn purge_doc_items(conn: &Connection, dir: &Path) {
         [],
     );
     let _ = conn.execute("DELETE FROM image_item WHERE doc = 1", []);
+}
+
+/// 清理孤儿图线条目:路径不被任何图库目录覆盖(目录已移除但索引残留,
+/// 如旧版全盘扫描目录移除时未清干净的 /System 资源图)。
+/// 与 remove_image_dir 的覆盖语义一致:无目录覆盖即不索引。缩略图与标签关联一并清理。
+fn purge_orphan_image_items(conn: &Connection, dir: &Path) {
+    let dirs: Vec<String> = match conn
+        .prepare("SELECT path FROM image_dir")
+        .and_then(|mut s| {
+            s.query_map([], |r| r.get::<_, String>(0))
+                .map(|rows| rows.filter_map(|r| r.ok()).collect())
+        }) {
+        Ok(v) => v,
+        Err(_) => return,
+    };
+    let items: Vec<(i64, String, String)> = match conn
+        .prepare("SELECT id, path, thumb FROM image_item")
+        .and_then(|mut s| {
+            s.query_map(
+                [],
+                |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)),
+            )
+            .map(|rows| rows.filter_map(|r| r.ok()).collect())
+        }) {
+        Ok(v) => v,
+        Err(_) => return,
+    };
+    let victims: Vec<(i64, String)> = items
+        .into_iter()
+        .filter(|(_, p, _)| !dirs.iter().any(|d| path_under(p, d)))
+        .map(|(id, _, thumb)| (id, thumb))
+        .collect();
+    if victims.is_empty() {
+        return;
+    }
+    // 先删行再删文件:事务失败只是残留孤儿缩略图文件(无害),
+    // 反过来会造成"行在文件丢"的破图且不会自愈(mtime 未变不重扫)
+    if let Ok(tx) = conn.unchecked_transaction() {
+        for (id, _) in &victims {
+            let _ = tx.execute("DELETE FROM image_item_tag WHERE item_id = ?1", rusqlite::params![id]);
+            let _ = tx.execute("DELETE FROM image_item WHERE id = ?1", rusqlite::params![id]);
+        }
+        let _ = tx.commit();
+    }
+    for (_, t) in &victims {
+        if !t.is_empty() {
+            let _ = std::fs::remove_file(dir.join("image_thumbs").join(t));
+        }
+    }
 }
 
 /// Unix 毫秒 -> ISO（旧便签 updated_at 用）。
@@ -283,6 +358,7 @@ impl Store {
         let _ = conn.execute("ALTER TABLE chat_message ADD COLUMN tool_call_id TEXT", []);
         migrate_json(&conn, dir)?;
         purge_doc_items(&conn, dir);
+        purge_orphan_image_items(&conn, dir);
         // 便签功能并入收藏：启动即把 legacy notes 表迁入 favorite（幂等）
         let store = Self { conn };
         store.migrate_legacy_notes()?;
@@ -528,6 +604,15 @@ impl Store {
         Ok(())
     }
 
+    /// 删除指定 id 及其之后的所有聊天消息（含该条），返回删除条数。
+    /// 用于「重新执行」：截断某条用户消息起的会话后重新发送。
+    pub fn delete_chat_messages_from(&self, id: i64) -> Result<usize> {
+        let n = self
+            .conn
+            .execute("DELETE FROM chat_message WHERE id >= ?1", [id])?;
+        Ok(n)
+    }
+
     /// 清空全部聊天消息。
     pub fn clear_chat_messages(&self) -> Result<()> {
         self.conn.execute("DELETE FROM chat_message", [])?;
@@ -565,6 +650,54 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn open_purges_orphan_image_items() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().to_path_buf();
+        {
+            let s = Store::open(&path).unwrap();
+            // 正常目录与其成员
+            s.conn
+                .execute(
+                    "INSERT INTO image_dir (path, full_disk, added_at) VALUES ('/pics', 0, 0)",
+                    [],
+                )
+                .unwrap();
+            s.conn
+                .execute(
+                    "INSERT INTO image_item (dir_id, path, name, ext) VALUES (1, '/pics/a.jpg', 'a.jpg', 'jpg')",
+                    [],
+                )
+                .unwrap();
+            // 孤儿:目录行已删(旧版残留),路径不被任何目录覆盖
+            s.conn
+                .execute(
+                    "INSERT INTO image_item (dir_id, path, name, ext, thumb) VALUES (99, '/System/x.jpg', 'x.jpg', 'jpg', 'aa/bb.jpg')",
+                    [],
+                )
+                .unwrap();
+            // 被现有目录覆盖的"脏"归属(dir_id 指向已删目录)不应被清
+            s.conn
+                .execute(
+                    "INSERT INTO image_item (dir_id, path, name, ext) VALUES (99, '/pics/b.jpg', 'b.jpg', 'jpg')",
+                    [],
+                )
+                .unwrap();
+        }
+        // 重开触发启动清理
+        let s2 = Store::open(&path).unwrap();
+        let orphan: i64 = s2
+            .conn
+            .query_row("SELECT COUNT(*) FROM image_item WHERE path = '/System/x.jpg'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(orphan, 0, "孤儿条目被清理");
+        let kept: i64 = s2
+            .conn
+            .query_row("SELECT COUNT(*) FROM image_item WHERE path IN ('/pics/a.jpg', '/pics/b.jpg')", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(kept, 2, "被目录覆盖的条目保留(不管 dir_id 归属)");
+    }
 
     fn sample_notes() -> Vec<Note> {
         vec![
@@ -839,6 +972,29 @@ mod tests {
         assert_eq!(list[1].tool_call_id.as_deref(), Some("c1"));
 
         store.clear_chat_messages().unwrap();
+        assert!(store.list_chat_messages().unwrap().is_empty());
+    }
+
+    #[test]
+    fn chat_messages_delete_from_truncates_tail() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+
+        let m1 = store.add_chat_message("user", "第一问", None, None).unwrap();
+        let m2 = store.add_chat_message("assistant", "第一答", None, None).unwrap();
+        let m3 = store.add_chat_message("user", "第二问", None, None).unwrap();
+        store.add_chat_message("assistant", "第二答", None, None).unwrap();
+
+        let n = store.delete_chat_messages_from(m3.id).unwrap();
+        assert_eq!(n, 2);
+        let list = store.list_chat_messages().unwrap();
+        assert_eq!(list.len(), 2);
+        assert_eq!(list[0].id, m1.id);
+        assert_eq!(list[1].id, m2.id);
+
+        // 首条也支持整段截断（清空效果）
+        let n = store.delete_chat_messages_from(m1.id).unwrap();
+        assert_eq!(n, 2);
         assert!(store.list_chat_messages().unwrap().is_empty());
     }
 

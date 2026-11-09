@@ -259,9 +259,12 @@ onMounted(async () => {
         }
         void loadDirs();
         void loadExts();
-        ElMessage.success(
-          t("docs.scanDone", { n: p.scanned, a: p.added, u: p.updated, r: p.removed }),
-        );
+        // 无新增且无清理时不提示,避免进入页面自动重扫每次都弹结果
+        if (p.added > 0 || p.removed > 0) {
+          ElMessage.success(
+            t("docs.scanDone", { n: p.scanned, a: p.added, u: p.updated, r: p.removed }),
+          );
+        }
       } else {
         scanState[p.dirId] = { scanned: p.scanned };
       }

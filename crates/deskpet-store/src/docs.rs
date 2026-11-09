@@ -2,7 +2,7 @@
 
 use rusqlite::params;
 
-use crate::store::Store;
+use crate::store::{dir_bounds, path_under, Store};
 use crate::Result;
 
 /// 文档目录(监控的扫描根目录)。
@@ -109,31 +109,69 @@ impl Store {
         })
     }
 
-    /// 列出文档目录(带条目计数)。
+    /// 列出文档目录(带条目计数)。计数按路径前缀:嵌套目录共享同一份索引,
+    /// 父目录与子目录都会统计到各自路径下的文件。
     pub fn list_doc_dirs(&self) -> Result<Vec<DocDir>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT d.id, d.path, d.added_at, d.last_scan_at, COUNT(i.id)
-             FROM doc_dir d LEFT JOIN doc_item i ON i.dir_id = d.id
-             GROUP BY d.id ORDER BY d.added_at, d.id",
-        )?;
-        let rows = stmt.query_map([], |row| {
-            Ok(DocDir {
-                id: row.get(0)?,
-                path: row.get(1)?,
-                added_at: row.get::<_, i64>(2)?.max(0) as u64,
-                last_scan_at: row.get::<_, i64>(3)?.max(0) as u64,
-                item_count: row.get::<_, i64>(4)?.max(0) as u64,
-            })
-        })?;
-        Ok(rows.filter_map(|r| r.ok()).collect())
+        let mut dirs: Vec<DocDir> = {
+            let mut stmt = self.conn.prepare(
+                "SELECT id, path, added_at, last_scan_at FROM doc_dir ORDER BY added_at, id",
+            )?;
+            let rows = stmt.query_map([], |row| {
+                Ok(DocDir {
+                    id: row.get(0)?,
+                    path: row.get(1)?,
+                    added_at: row.get::<_, i64>(2)?.max(0) as u64,
+                    last_scan_at: row.get::<_, i64>(3)?.max(0) as u64,
+                    item_count: 0,
+                })
+            })?;
+            rows.filter_map(|r| r.ok()).collect()
+        };
+        for d in &mut dirs {
+            let (lo, hi) = dir_bounds(&d.path);
+            let n: i64 = self.conn.query_row(
+                "SELECT COUNT(*) FROM doc_item WHERE path >= ?1 AND path < ?2",
+                params![lo, hi],
+                |r| r.get(0),
+            )?;
+            d.item_count = n.max(0) as u64;
+        }
+        Ok(dirs)
     }
 
-    /// 移除文档目录及其索引(不动用户文件)。
+    /// 移除文档目录;仅删除不再被其他目录覆盖的索引(不动用户文件)。
+    /// 嵌套场景:移除子目录保留父目录覆盖的文件,移除父目录保留子目录覆盖的文件。
     pub fn remove_doc_dir(&self, id: i64) -> Result<u64> {
-        let n = self.conn.execute("DELETE FROM doc_item WHERE dir_id = ?1", params![id])?;
+        let Some(path) = self.doc_dir_path(id) else {
+            return Ok(0);
+        };
+        let others: Vec<String> = {
+            let mut stmt = self
+                .conn
+                .prepare("SELECT path FROM doc_dir WHERE id != ?1")?;
+            let rows = stmt.query_map(params![id], |r| r.get::<_, String>(0))?;
+            rows.filter_map(|r| r.ok()).collect()
+        };
+        let (lo, hi) = dir_bounds(&path);
+        let victims: Vec<i64> = {
+            let mut stmt = self.conn.prepare(
+                "SELECT id, path FROM doc_item WHERE path >= ?1 AND path < ?2",
+            )?;
+            let rows = stmt.query_map(params![lo, hi], |r| {
+                Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))
+            })?;
+            rows.filter_map(|r| r.ok())
+                .filter(|(_, p)| !others.iter().any(|o| path_under(p, o)))
+                .map(|(id, _)| id)
+                .collect()
+        };
+        for vid in &victims {
+            self.conn
+                .execute("DELETE FROM doc_item WHERE id = ?1", params![vid])?;
+        }
         self.conn
             .execute("DELETE FROM doc_dir WHERE id = ?1", params![id])?;
-        Ok(n as u64)
+        Ok(victims.len() as u64)
     }
 
     /// 记录目录扫描完成时间。
@@ -217,13 +255,24 @@ impl Store {
         Ok(())
     }
 
-    /// 按过滤条件查询文档,返回 (条目, 是否还有更多)。
-    pub fn query_doc_items(&self, q: &DocQuery) -> Result<(Vec<DocItem>, bool)> {
-        let mut sql = format!("SELECT {DOC_COLS} FROM doc_item WHERE 1=1");
-        let mut args: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+    /// 目录过滤/查询的公共 WHERE 组装:目录按路径前缀匹配(嵌套目录共享索引),
+    /// dir_id 不再作为成员归属,仅是首次索引记录。
+    fn doc_filter_sql(
+        &self,
+        q: &DocQuery,
+        sql: &mut String,
+        args: &mut Vec<Box<dyn rusqlite::types::ToSql>>,
+    ) {
         if let Some(dir_id) = q.dir_id {
-            sql.push_str(" AND dir_id = ?");
-            args.push(Box::new(dir_id));
+            match self.doc_dir_path(dir_id) {
+                Some(path) => {
+                    let (lo, hi) = dir_bounds(&path);
+                    sql.push_str(" AND path >= ? AND path < ?");
+                    args.push(Box::new(lo));
+                    args.push(Box::new(hi));
+                }
+                None => sql.push_str(" AND 1=0"),
+            }
         }
         if let Some(ext) = &q.ext {
             sql.push_str(" AND ext = ?");
@@ -236,6 +285,25 @@ impl Store {
                 q.search.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")
             )));
         }
+    }
+
+    /// 目录 id → 路径;目录不存在返回 None。
+    fn doc_dir_path(&self, id: i64) -> Option<String> {
+        self.conn
+            .query_row(
+                "SELECT path FROM doc_dir WHERE id = ?1",
+                params![id],
+                |r| r.get(0),
+            )
+            .ok()
+    }
+
+    /// 按过滤条件查询文档,返回 (条目, 是否还有更多)。
+    /// 目录过滤按路径前缀:文件在任一覆盖它的目录下都可见,不依赖首次索引归属。
+    pub fn query_doc_items(&self, q: &DocQuery) -> Result<(Vec<DocItem>, bool)> {
+        let mut sql = format!("SELECT {DOC_COLS} FROM doc_item WHERE 1=1");
+        let mut args: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+        self.doc_filter_sql(q, &mut sql, &mut args);
         // 排序白名单:列名与方向都不进字符串拼接的非法值
         let order_col = match q.sort_by.as_deref() {
             Some("name") => "name COLLATE NOCASE",
@@ -268,21 +336,7 @@ impl Store {
     pub fn count_doc_items(&self, q: &DocQuery) -> Result<u64> {
         let mut sql = String::from("SELECT COUNT(*) FROM doc_item WHERE 1=1");
         let mut args: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
-        if let Some(dir_id) = q.dir_id {
-            sql.push_str(" AND dir_id = ?");
-            args.push(Box::new(dir_id));
-        }
-        if let Some(ext) = &q.ext {
-            sql.push_str(" AND ext = ?");
-            args.push(Box::new(ext.clone()));
-        }
-        if !q.search.is_empty() {
-            sql.push_str(" AND name LIKE ? ESCAPE '\\'");
-            args.push(Box::new(format!(
-                "%{}%",
-                q.search.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")
-            )));
-        }
+        self.doc_filter_sql(q, &mut sql, &mut args);
         let mut stmt = self.conn.prepare(&sql)?;
         let refs: Vec<&dyn rusqlite::types::ToSql> = args.iter().map(|a| a.as_ref()).collect();
         let n: i64 = stmt.query_row(refs.as_slice(), |r| r.get(0))?;
@@ -429,5 +483,62 @@ mod tests {
         s.delete_doc_item(id).unwrap();
         assert!(s.get_doc_item_stamp("/x/a.pdf").unwrap().is_none());
         assert_eq!(s.count_doc_items(&DocQuery::default()).unwrap(), 0);
+    }
+
+    #[test]
+    fn doc_nested_dirs_share_index_by_prefix() {
+        let s = open();
+        let parent = s.add_doc_dir("/home/u").unwrap();
+        let child = s.add_doc_dir("/home/u/docs").unwrap();
+        // 父目录先扫描:子目录文件也入索引(归属 parent)
+        s.add_doc_item(&meta(parent.id, "/home/u/a.pdf", "a.pdf")).unwrap();
+        s.add_doc_item(&meta(parent.id, "/home/u/docs/b.pdf", "b.pdf")).unwrap();
+        s.add_doc_item(&meta(parent.id, "/home/u/docs/c.pdf", "c.pdf")).unwrap();
+        // 兄弟目录路径(前缀相近)不算成员
+        s.add_doc_item(&meta(parent.id, "/home/u-x/d.pdf", "d.pdf")).unwrap();
+
+        // 计数按前缀:子目录继承已索引文件,兄弟路径不计入
+        let dirs = s.list_doc_dirs().unwrap();
+        assert_eq!(dirs[0].item_count, 3, "父目录:3 个成员");
+        assert_eq!(dirs[1].item_count, 2, "子目录:共享索引 2 个成员");
+
+        // 子目录查询可见父目录扫描过的文件
+        let (items, _) = s
+            .query_doc_items(&DocQuery {
+                dir_id: Some(child.id),
+                limit: 10,
+                ..Default::default()
+            })
+            .unwrap();
+        let names: Vec<&str> = items.iter().map(|i| i.name.as_str()).collect();
+        assert_eq!(names, ["c.pdf", "b.pdf"]);
+
+        // 移除子目录:全部被父目录覆盖,不删任何索引
+        let n = s.remove_doc_dir(child.id).unwrap();
+        assert_eq!(n, 0);
+        assert_eq!(s.count_doc_items(&DocQuery::default()).unwrap(), 4);
+
+        // 移除父目录:删未被覆盖的成员(a.pdf);b/c 被子目录保留。
+        // 兄弟路径 /home/u-x 本就不在父目录前缀内,不受影响
+        let child2 = s.add_doc_dir("/home/u/docs").unwrap();
+        let n = s.remove_doc_dir(parent.id).unwrap();
+        assert_eq!(n, 1, "仅 a.pdf 删除,b/c 被子目录保留");
+        let (items, _) = s
+            .query_doc_items(&DocQuery {
+                dir_id: Some(child2.id),
+                limit: 10,
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(items.len(), 2);
+    }
+
+    #[test]
+    fn doc_root_dir_matches_all_paths() {
+        let s = open();
+        let root = s.add_doc_dir("/").unwrap();
+        s.add_doc_item(&meta(root.id, "/Users/u/a.pdf", "a.pdf")).unwrap();
+        let dirs = s.list_doc_dirs().unwrap();
+        assert_eq!(dirs[0].item_count, 1, "根目录按前缀匹配全部路径");
     }
 }

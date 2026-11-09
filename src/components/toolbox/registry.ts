@@ -1,6 +1,6 @@
 import type { Component } from "vue";
 import { defineAsyncComponent } from "vue";
-import { Crop, Connection, Cpu, Delete, Document, Lock, Postcard, ScaleToOriginal } from "@element-plus/icons-vue";
+import { Crop, Connection, Cpu, Delete, Document, Lock, Postcard, ScaleToOriginal, Switch } from "@element-plus/icons-vue";
 
 /** 工具箱内一个工具的注册信息。 */
 export interface ToolboxTool {
@@ -78,5 +78,12 @@ export const TOOLBOX_TOOLS: ToolboxTool[] = [
     descKey: "toolbox.tools.monitor.desc",
     icon: Cpu,
     component: defineAsyncComponent(() => import("./tools/MonitorTool.vue")),
+  },
+  {
+    id: "textdiff",
+    titleKey: "toolbox.tools.textdiff.title",
+    descKey: "toolbox.tools.textdiff.desc",
+    icon: Switch,
+    component: defineAsyncComponent(() => import("./tools/TextDiffTool.vue")),
   },
 ];

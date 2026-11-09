@@ -233,6 +233,9 @@ function itemTagColors(it: ImageItemInfo): string[] {
 async function refresh() {
   items.value = [];
   hasMore.value = false;
+  // 列表重载后旧选区失效(选中项可能已不在当前列表),退出多选避免对不存在的目标操作
+  selectMode.value = false;
+  selectedIds.value = new Set();
   // 过滤条件切换后回到顶部,避免停留在旧滚动位置看不到新列表头部
   if (mainRef.value) {
     mainRef.value.scrollTop = 0;
@@ -280,27 +283,9 @@ async function pickDir() {
     if (typeof picked !== "string" || !picked) {
       return;
     }
-    const dir = await imagesAddDir(picked, false);
+    const dir = await imagesAddDir(picked);
     await loadDirs();
     dirFilter.value = dir.id;
-    void imagesScanStart(dir.id).catch((e) => ElMessage.error(String(e)));
-  } catch (e) {
-    ElMessage.error(String(e));
-  }
-}
-
-async function addFullDisk() {
-  try {
-    await ElMessageBox.confirm(t("images.fullDiskConfirm"), t("images.fullDisk"), {
-      type: "warning",
-      confirmButtonText: t("images.fullDisk"),
-    });
-  } catch {
-    return;
-  }
-  try {
-    const dir = await imagesAddDir("/", true);
-    await loadDirs();
     void imagesScanStart(dir.id).catch((e) => ElMessage.error(String(e)));
   } catch (e) {
     ElMessage.error(String(e));
@@ -358,9 +343,12 @@ onMounted(async () => {
           void refresh();
         }
         void loadDirs();
-        ElMessage.success(
-          t("images.scanDone", { n: p.scanned, a: p.added, u: p.updated, r: p.removed }),
-        );
+        // 无新增且无清理时不提示,避免进入页面自动重扫每次都弹结果
+        if (p.added > 0 || p.removed > 0) {
+          ElMessage.success(
+            t("images.scanDone", { n: p.scanned, a: p.added, u: p.updated, r: p.removed }),
+          );
+        }
       } else {
         scanState[p.dirId] = {
           scanned: p.scanned,
@@ -1343,48 +1331,43 @@ async function favSelected() {
   }
 }
 
-/** 删除所选照片:逐张移废纸篓(每张独立成败),成功后本地剔除 */
+/** 删除所选照片:一次性批量移废纸篓(系统音效只播一次)。
+ *  批量为原子操作:失败则全部未动,保留选区便于重试 */
 async function deleteSelectedPhotos() {
   if (!selectedIds.value.size) {
     return;
   }
+  const targets = items.value.filter((i) => selectedIds.value.has(i.id));
+  if (!targets.length) {
+    return;
+  }
   try {
     await ElMessageBox.confirm(
-      t("images.deleteSelectedConfirm", { n: selectedIds.value.size }),
+      t("images.deleteSelectedConfirm", { n: targets.length }),
       t("images.deleteSelected"),
       { type: "warning" },
     );
   } catch {
     return;
   }
-  const done = new Set<number>();
-  let failed = 0;
-  let lastErr = "";
-  for (const id of selectedIds.value) {
-    try {
-      await imagesDeleteItem(id);
-      done.add(id);
-    } catch (e) {
-      failed++;
-      lastErr = String(e);
-    }
+  try {
+    await imagesDeletePaths(
+      targets.map((i) => i.path),
+      targets.map((i) => i.id),
+    );
+  } catch (e) {
+    ElMessage.error(String(e));
+    return;
   }
-  if (done.size) {
-    items.value = items.value.filter((i) => !done.has(i.id));
-    if (viewer.item && done.has(viewer.item.id)) {
-      closeViewer();
-    }
-    await Promise.all([loadDirs(), loadTags()]);
+  const deleted = new Set(targets.map((i) => i.id));
+  items.value = items.value.filter((i) => !deleted.has(i.id));
+  if (viewer.item && deleted.has(viewer.item.id)) {
+    closeViewer();
   }
   selectMode.value = false;
   selectedIds.value = new Set();
-  if (!failed) {
-    ElMessage.success(t("images.deleteDone"));
-  } else if (done.size) {
-    ElMessage.warning(t("images.dupPartialFail", { n: failed }));
-  } else {
-    ElMessage.error(lastErr);
-  }
+  await Promise.all([loadDirs(), loadTags()]);
+  ElMessage.success(t("images.deleteDone"));
 }
 
 </script>
@@ -1495,13 +1478,6 @@ async function deleteSelectedPhotos() {
               </el-icon>
             </span>
           </div>
-          <button
-            class="w-full mt-1 px-1.5 py-1 rounded-md text-left text-[11px] text-dp-tertiary hover:bg-dp-btn-bg hover:text-dp-muted flex items-center gap-1.5"
-            @click="addFullDisk"
-          >
-            <el-icon :size="11"><Plus /></el-icon>
-            {{ t("images.fullDisk") }}
-          </button>
         </div>
 
         <div class="p-2.5 border-t border-dp-divider">

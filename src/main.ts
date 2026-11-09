@@ -33,7 +33,9 @@ async function bootstrap() {
             ? (await import("./DocsApp.vue")).default
             : view === "http"
               ? (await import("./HttpApp.vue")).default
-              : view === "monitorbar"
+              : view === "textdiff"
+                ? (await import("./TextDiffApp.vue")).default
+                : view === "monitorbar"
                 ? (await import("./FloatingMonitorApp.vue")).default
                 : App;
   createApp(Root).use(createPinia()).use(i18n).use(ElementPlus).mount("#app");

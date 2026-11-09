@@ -12,6 +12,7 @@ import {
   Loading,
   Plus,
   Position,
+  RefreshRight,
   VideoPause,
 } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
@@ -22,7 +23,13 @@ import { copyToClipboard } from "@/api/clipboard";
 import { mcpConnect, mcpDisconnect, mcpServerStatus } from "@/api/mcp";
 import { renderMarkdown } from "@/lib/md";
 import { SYSTEM_PROMPT, collectTools, type AggregatedTools, type ToolExecResult } from "@/lib/ai-tools";
-import { getChatMessages, addChatMessage, deleteChatMessage, clearChatMessages } from "@/api/chat";
+import {
+  getChatMessages,
+  addChatMessage,
+  deleteChatMessage,
+  deleteChatMessagesFrom,
+  clearChatMessages,
+} from "@/api/chat";
 import type { AiModel, ChatEntry, ChatMessage, McpServerConfig, ToolCall } from "@/types";
 
 const { t } = useI18n();
@@ -404,6 +411,38 @@ async function copyMessage(msg: ChatEntry) {
   }
 }
 
+/**
+ * 重新执行某条用户消息：删除该条及其后的全部记录（含工具轮），原文重发。
+ * 先做模型预检再截断，避免 send 提前返回时原文已被删掉。
+ */
+async function retryMessage(msg: ChatEntry) {
+  if (msg.role !== "user" || msg.id <= 0 || streaming.value || !msg.content.trim()) {
+    return;
+  }
+  const model = activeModel.value;
+  if (!model) {
+    ElMessage.warning(t("chat.noModel"));
+    showModels.value = true;
+    return;
+  }
+  if (!isModelReady(model)) {
+    ElMessage.warning(t("chat.modelIncomplete"));
+    showModels.value = true;
+    return;
+  }
+  const content = msg.content;
+  try {
+    await deleteChatMessagesFrom(msg.id);
+  } catch (err) {
+    console.error("[desk-pet] 删除消息失败:", err);
+    ElMessage.error(t("chat.deleteFail"));
+    return;
+  }
+  messages.value = messages.value.filter((m) => m.id < msg.id);
+  input.value = content;
+  await send();
+}
+
 async function clearHistory() {
   if (rendered.value.length === 0) {
     return;
@@ -769,12 +808,22 @@ function fillVortex() {
               v-html="renderMarkdown(msg.content)"
             />
           </div>
-          <!-- 操作按钮组：用户消息（靠右）放气泡左侧，助手消息（靠左）放气泡右侧，上下排列 -->
+          <!-- 操作按钮组：用户消息（靠右）放气泡左侧、三个横排一行；助手消息（靠左）放气泡右侧纵排 -->
           <div
             v-if="msg.content.trim() || msg.id > 0"
-            class="flex flex-col justify-center shrink-0 gap-0.5 mx-0.5 order-first [&_.el-button+_.el-button]:ml-0"
-            :class="msg.role === 'user' ? 'order-first' : 'order-last'"
+            class="flex items-center justify-center shrink-0 gap-0.5 mx-0.5 [&_.el-button+_.el-button]:ml-0"
+            :class="msg.role === 'user' ? 'order-first flex-row' : 'order-last flex-col'"
           >
+            <el-button
+              v-if="msg.role === 'user' && msg.id > 0"
+              class="w-5 h-5 min-w-5 p-0 m-0 opacity-0 transition-opacity duration-150 ease-[ease] [.msg-row:hover_&]:opacity-55 [.msg-row_&]:hover:opacity-100"
+              text
+              size="small"
+              :icon="RefreshRight"
+              :title="t('chat.retry')"
+              :disabled="streaming"
+              @click="retryMessage(msg)"
+            />
             <el-button
               v-if="msg.content.trim()"
               class="w-5 h-5 min-w-5 p-0 m-0 opacity-0 transition-opacity duration-150 ease-[ease] [.msg-row:hover_&]:opacity-55 [.msg-row_&]:hover:opacity-100"

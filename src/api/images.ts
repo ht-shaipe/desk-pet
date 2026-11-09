@@ -10,8 +10,8 @@ import type {
 
 export const imagesOpen = (view?: string) =>
   invoke<boolean>("images_open", { view: view ?? null });
-export const imagesAddDir = (path: string, fullDisk: boolean) =>
-  invoke<ImageDirInfo>("images_add_dir", { path, fullDisk });
+export const imagesAddDir = (path: string) =>
+  invoke<ImageDirInfo>("images_add_dir", { path });
 export const imagesListDirs = () => invoke<ImageDirInfo[]>("images_list_dirs");
 export const imagesRemoveDir = (id: number) => invoke<void>("images_remove_dir", { id });
 export const imagesScanStart = (dirId: number) => invoke<void>("images_scan_start", { dirId });

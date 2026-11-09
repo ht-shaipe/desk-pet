@@ -113,12 +113,13 @@ pub async fn images_open(app: AppHandle, view: Option<String>) -> Result<bool, S
 pub fn images_add_dir(
     app: AppHandle,
     path: String,
-    full_disk: bool,
 ) -> Result<deskpet_store::ImageDir, String> {
     let trimmed = path.trim().to_string();
     if trimmed.is_empty() {
         return Err("目录不能为空".into());
     }
+    // 根路径（"/"、"C:\"）自动按全盘目录处理：扫描时跳过系统目录
+    let full_disk = Path::new(&trimmed).parent().is_none();
     let state = app.state::<AppState>();
     let store = state.store.lock().unwrap();
     store
@@ -886,17 +887,18 @@ pub async fn images_dup_groups(
     .map_err(|e| format!("查询失败: {e}"))?
 }
 
-/// 批量移废纸篓(重复清理),并清对应索引与缩略图。
+/// 批量移废纸篓(重复清理/多选删除),一次性提交全部路径——
+/// trash crate 默认走 Finder 删除、每次调用都播一次系统音效,
+/// 逐个循环会产生连续提示音;delete_all 合并为一次 Finder 删除,只播一次。
+/// 成功后清对应索引与缩略图。
 #[tauri::command]
 pub async fn images_delete_paths(app: AppHandle, paths: Vec<String>, ids: Vec<i64>) -> Result<(), String> {
     let data = data_dir(&app).map_err(|e| e.to_string())?;
     let mut stale_thumbs = Vec::new();
-    for p in &paths {
-        trash_delete(Path::new(p))?;
-    }
+    trash_delete_all(&paths)?;
     {
         let state = app.state::<AppState>();
-    let store = state.store.lock().unwrap();
+        let store = state.store.lock().unwrap();
         for id in ids {
             if let Ok(Some(thumb)) = store.delete_image_item(id) {
                 stale_thumbs.push(thumb);
@@ -1007,6 +1009,23 @@ fn trash_delete(path: &Path) -> Result<(), String> {
         return Ok(());
     }
     trash::delete(path).map_err(|e| format!("移入废纸篓失败: {e}"))
+}
+
+/// 批量移入废纸篓:一次性提交全部路径。trash crate 在 macOS 默认走 Finder 删除,
+/// 每次调用都会播放一次系统废纸篓音效;delete_all 把所有路径合并为一次 Finder
+/// 删除,音效只播一次。
+/// 跳过已不存在的路径:delete_all 会先 canonicalize,任一路径缺失都让整批失败;
+/// 已被外部移动/删除的文件无需入篓,直接清索引即可。
+fn trash_delete_all(paths: &[String]) -> Result<(), String> {
+    let refs: Vec<&Path> = paths
+        .iter()
+        .map(|p| Path::new(p.as_str()))
+        .filter(|p| p.exists())
+        .collect();
+    if refs.is_empty() {
+        return Ok(());
+    }
+    trash::delete_all(refs).map_err(|e| format!("移入废纸篓失败: {e}"))
 }
 
 /// 文件 blake3(流式 64KB 分块)。

@@ -9,10 +9,12 @@ npm run dev                 # Vite dev（端口 1820，HMR 1821）
 npm run build               # 前端构建（含 vue-tsc 类型检查）
 cargo check                 # Rust 静态检查
 cargo test --workspace      # Rust 全部测试
+npm run licenses:generate   # 依赖变更后重新生成 THIRD-PARTY-NOTICES.md
 ```
 
 - 前端改动以 `npm run build` 通过为准；Rust 改动须过 `cargo check` 与相关 `cargo test`。
 - i18n：`src/i18n/zh-CN.ts` 与 `en.ts` 键位必须完全对齐（flat 后集合相等），改动后重新比对。
+- 依赖（Cargo.toml / package.json）变更后须重新运行 `npm run licenses:generate` 更新第三方许可清单。
 
 ## 样式：统一 UnoCSS，不写 scoped CSS
 

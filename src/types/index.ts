@@ -101,6 +101,32 @@ export interface DocumentConvertResult {
   page_count: number;
 }
 
+/** 文本对比：行内片段（text_diff 命令返回）。 */
+export interface DiffSegment {
+  text: string;
+  /** 语法 token 类型（keyword/string/comment/number/function/type/…），null = 默认色 */
+  token: string | null;
+  /** 词级差异标记（行内加深背景） */
+  changed: boolean;
+}
+
+/** 文本对比：一行 diff。 */
+export interface DiffRow {
+  kind: "equal" | "delete" | "insert";
+  oldLineno: number | null;
+  newLineno: number | null;
+  segments: DiffSegment[];
+}
+
+/** 文本对比结果（text_diff 命令返回）。 */
+export interface TextDiffResult {
+  /** 实际启用语法高亮的语言；纯文本/未知语言为 null */
+  language: string | null;
+  rows: DiffRow[];
+  added: number;
+  removed: number;
+}
+
 export interface AppSettings {
   pet_x: number | null;
   pet_y: number | null;

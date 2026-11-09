@@ -9,7 +9,8 @@
     "images",
     "docs",
     "http",
-    "monitorbar"
+    "monitorbar",
+    "textdiff"
   ],
   "permissions": [
     "core:default",

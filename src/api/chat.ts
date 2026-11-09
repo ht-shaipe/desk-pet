@@ -17,4 +17,7 @@ export const addChatMessage = (
     toolCallId: toolCallId ?? null,
   });
 export const deleteChatMessage = (id: number) => invoke<void>("delete_chat_message", { id });
+/** 删除指定 id 及其之后的全部消息（含该条），返回删除条数；用于用户消息「重新执行」。 */
+export const deleteChatMessagesFrom = (id: number) =>
+  invoke<number>("delete_chat_messages_from", { id });
 export const clearChatMessages = () => invoke<void>("clear_chat_messages");

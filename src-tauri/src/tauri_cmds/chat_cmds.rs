@@ -39,6 +39,17 @@ pub fn delete_chat_message(app: AppHandle, id: i64) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+/// 删除指定 id 及其之后的全部消息（含该条），用于用户消息「重新执行」。
+#[tauri::command]
+pub fn delete_chat_messages_from(app: AppHandle, id: i64) -> Result<usize, String> {
+    app.state::<AppState>()
+        .store
+        .lock()
+        .unwrap()
+        .delete_chat_messages_from(id)
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub fn clear_chat_messages(app: AppHandle) -> Result<(), String> {
     app.state::<AppState>()

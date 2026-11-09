@@ -7,6 +7,7 @@ import type {
   HttpResponseData,
   ImageFileInfo,
   ImagePayload,
+  TextDiffResult,
 } from "@/types";
 
 export const getClipboardImage = () => invoke<ImagePayload | null>("get_clipboard_image");
@@ -44,3 +45,10 @@ export const documentConvert = (path: string) =>
 /** 保存文本内容到本地文件 */
 export const saveDocumentMarkdown = (path: string, content: string) =>
   invoke<void>("save_document_markdown", { path, content });
+
+/** 文本对比：行级 + 词级 diff + tree-sitter 语法高亮；language 为 null/"plain" 时纯文本 */
+export const textDiff = (left: string, right: string, language: string | null) =>
+  invoke<TextDiffResult>("text_diff", { left, right, language });
+
+/** 打开(或聚焦)文本对比独立窗口，返回是否为新创建 */
+export const textDiffOpen = () => invoke<boolean>("textdiff_open");
