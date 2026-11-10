@@ -84,6 +84,7 @@ pub fn run() {
             tauri_cmds::diff_cmds::text_diff,
             tauri_cmds::channel_cmds::channel_start,
             tauri_cmds::channel_cmds::channel_stop,
+            tauri_cmds::channel_cmds::channel_report_user,
             tauri_cmds::channel_cmds::channel_task_ack,
             tauri_cmds::channel_cmds::channel_task_progress,
             tauri_cmds::mcp_cmds::mcp_connect,

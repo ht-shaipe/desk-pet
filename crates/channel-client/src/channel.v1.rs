@@ -3,7 +3,7 @@
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ClientMessage {
-    #[prost(oneof = "client_message::Payload", tags = "1, 2, 3, 4")]
+    #[prost(oneof = "client_message::Payload", tags = "1, 2, 3, 4, 5")]
     pub payload: ::core::option::Option<client_message::Payload>,
 }
 /// Nested message and enum types in `ClientMessage`.
@@ -23,6 +23,9 @@ pub mod client_message {
         /// 任务执行进度/结果
         #[prost(message, tag = "4")]
         TaskProgress(super::TaskProgress),
+        /// 用户资料补报(登录后/变更时; user_id 空 = 解绑)
+        #[prost(message, tag = "5")]
+        UserInfo(super::UserInfo),
     }
 }
 /// 握手: 连接建立后客户端必须先发送 Hello
@@ -38,12 +41,35 @@ pub struct Hello {
     /// 客户端版本
     #[prost(string, tag = "3")]
     pub version: ::prost::alloc::string::String,
-    /// 客户端IP
-    #[prost(string, tag = "4")]
-    pub ip: ::prost::alloc::string::String,
+    /// 4 原为客户端自报 IP(预留字段), 已废弃: 服务端恒取传输层对端地址,
+    /// 终端无需自报 IP; 字段号 4 永久保留, 不得复用
+    ///
     /// 设备信息快照(连接时上报)
     #[prost(message, optional, tag = "5")]
     pub device_info: ::core::option::Option<DeviceInfo>,
+    /// 登录态用户资料(未登录不填; user_id 为空视为未绑定, 不产生解绑事件——登出解绑请发上行 user_info 空)
+    #[prost(message, optional, tag = "6")]
+    pub user_info: ::core::option::Option<UserInfo>,
+}
+/// 终端当前登录的用户资料(业务侧关联设备归属; 未登录时不上报)
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct UserInfo {
+    /// 用户唯一标识(业务侧账号体系)
+    #[prost(string, tag = "1")]
+    pub user_id: ::prost::alloc::string::String,
+    /// 登录账号
+    #[prost(string, tag = "2")]
+    pub username: ::prost::alloc::string::String,
+    /// 昵称/展示名
+    #[prost(string, tag = "3")]
+    pub nickname: ::prost::alloc::string::String,
+    /// 手机号
+    #[prost(string, tag = "4")]
+    pub mobile: ::prost::alloc::string::String,
+    /// 头像 URL
+    #[prost(string, tag = "5")]
+    pub avatar: ::prost::alloc::string::String,
 }
 /// 终端设备信息快照(随 Hello 上报, 业务侧登记/入库)
 #[allow(clippy::all)]
@@ -84,7 +110,7 @@ pub struct DeviceInfo {
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct Heartbeat {
-    /// 心跳序号(客户端自增)
+    /// 心跳序号(客户端自增, 服务端暂不校验)
     #[prost(int64, tag = "1")]
     pub seq: i64,
 }
@@ -112,8 +138,8 @@ pub struct TaskProgress {
     /// 任务id
     #[prost(int64, tag = "1")]
     pub task_id: i64,
-    /// 3执行中 4成功 5失败
-    #[prost(int32, tag = "2")]
+    /// 执行状态(枚举值, 见 TaskStatus)
+    #[prost(enumeration = "TaskStatus", tag = "2")]
     pub status: i32,
     /// 执行结果/错误信息
     #[prost(string, tag = "3")]
@@ -123,7 +149,7 @@ pub struct TaskProgress {
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ServerMessage {
-    #[prost(oneof = "server_message::Payload", tags = "1, 2, 3, 4, 5, 6")]
+    #[prost(oneof = "server_message::Payload", tags = "1, 2, 3, 4, 6")]
     pub payload: ::core::option::Option<server_message::Payload>,
 }
 /// Nested message and enum types in `ServerMessage`.
@@ -143,9 +169,9 @@ pub mod server_message {
         /// 任务取消
         #[prost(message, tag = "4")]
         TaskCancel(super::TaskCancel),
-        /// 升级指令(便捷消息)
-        #[prost(message, tag = "5")]
-        Upgrade(super::Upgrade),
+        /// 5 原为 Upgrade 便捷消息, 已废弃: 升级统一走 TaskAssign(task_type=TASK_TYPE_UPGRADE),
+        /// 服务端从未实现 Upgrade 发送路径; 字段号 5 永久保留, 不得复用
+        ///
         /// 直接推送的业务消息(不落库)
         #[prost(message, tag = "6")]
         Push(super::PushMessage),
@@ -180,8 +206,8 @@ pub struct HeartbeatAck {
 pub struct TaskAssign {
     #[prost(int64, tag = "1")]
     pub task_id: i64,
-    /// 1升级 2配置下发 3指令
-    #[prost(int32, tag = "2")]
+    /// 任务类型(枚举值, 见 TaskType)
+    #[prost(enumeration = "TaskType", tag = "2")]
     pub task_type: i32,
     /// 本次投递的序号
     #[prost(int32, tag = "3")]
@@ -196,19 +222,6 @@ pub struct TaskAssign {
 pub struct TaskCancel {
     #[prost(int64, tag = "1")]
     pub task_id: i64,
-}
-/// 升级指令
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct Upgrade {
-    #[prost(string, tag = "1")]
-    pub version: ::prost::alloc::string::String,
-    #[prost(string, tag = "2")]
-    pub url: ::prost::alloc::string::String,
-    #[prost(string, tag = "3")]
-    pub md5: ::prost::alloc::string::String,
-    #[prost(bool, tag = "4")]
-    pub force: bool,
 }
 /// 直接推送的业务消息
 /// 由 HTTP /client/push 触发，发送到当前在线会话；不落库、不重试。
@@ -227,6 +240,86 @@ pub struct PushMessage {
     /// 服务器时间戳(秒)
     #[prost(int64, tag = "4")]
     pub server_time: i64,
+}
+/// 任务类型(下发方向: TaskAssign.task_type)
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum TaskType {
+    /// 未指定
+    Unspecified = 0,
+    /// 升级
+    Upgrade = 1,
+    /// 配置下发
+    Config = 2,
+    /// 指令
+    Command = 3,
+    /// 检查更新
+    CheckUpdate = 4,
+}
+impl TaskType {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "TASK_TYPE_UNSPECIFIED",
+            Self::Upgrade => "TASK_TYPE_UPGRADE",
+            Self::Config => "TASK_TYPE_CONFIG",
+            Self::Command => "TASK_TYPE_COMMAND",
+            Self::CheckUpdate => "TASK_TYPE_CHECK_UPDATE",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "TASK_TYPE_UNSPECIFIED" => Some(Self::Unspecified),
+            "TASK_TYPE_UPGRADE" => Some(Self::Upgrade),
+            "TASK_TYPE_CONFIG" => Some(Self::Config),
+            "TASK_TYPE_COMMAND" => Some(Self::Command),
+            "TASK_TYPE_CHECK_UPDATE" => Some(Self::CheckUpdate),
+            _ => None,
+        }
+    }
+}
+/// 任务执行状态(上行方向: TaskProgress.status)
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum TaskStatus {
+    /// 未指定
+    Unspecified = 0,
+    /// 执行中
+    Running = 3,
+    /// 成功
+    Success = 4,
+    /// 失败
+    Failed = 5,
+}
+impl TaskStatus {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "TASK_STATUS_UNSPECIFIED",
+            Self::Running => "TASK_STATUS_RUNNING",
+            Self::Success => "TASK_STATUS_SUCCESS",
+            Self::Failed => "TASK_STATUS_FAILED",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "TASK_STATUS_UNSPECIFIED" => Some(Self::Unspecified),
+            "TASK_STATUS_RUNNING" => Some(Self::Running),
+            "TASK_STATUS_SUCCESS" => Some(Self::Success),
+            "TASK_STATUS_FAILED" => Some(Self::Failed),
+            _ => None,
+        }
+    }
 }
 /// Generated client implementations.
 pub mod channel_service_client {
@@ -320,7 +413,7 @@ pub mod channel_service_client {
             self.inner = self.inner.max_encoding_message_size(limit);
             self
         }
-        /// 双向通道: 上行 Hello/Heartbeat/TaskAck/TaskProgress, 下行 HelloAck/HeartbeatAck/TaskAssign/TaskCancel/Upgrade/Push
+        /// 双向通道: 上行 Hello/Heartbeat/TaskAck/TaskProgress/UserInfo, 下行 HelloAck/HeartbeatAck/TaskAssign/TaskCancel/Push
         pub async fn open(
             &mut self,
             request: impl tonic::IntoStreamingRequest<Message = super::ClientMessage>,

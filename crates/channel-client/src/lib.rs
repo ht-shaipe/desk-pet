@@ -26,7 +26,8 @@ pub const CHANNEL_PATH: &str = "/channel.v1.ChannelService/Open";
 mod tests {
     use crate::channel::{
         ClientMessage, DeviceInfo, Hello, PushMessage, ServerMessage, TaskAck, TaskAssign,
-        client_message::Payload as ClientPayload, server_message::Payload as ServerPayload,
+        TaskProgress, TaskStatus, TaskType, UserInfo, client_message::Payload as ClientPayload,
+        server_message::Payload as ServerPayload,
     };
     use prost::Message;
 
@@ -37,7 +38,6 @@ mod tests {
                 device_id: "device-1".into(),
                 app_key: "demo-app".into(),
                 version: "0.1.0".into(),
-                ip: "127.0.0.1".into(),
                 device_info: Some(DeviceInfo {
                     device_brand: "Apple".into(),
                     device_model: "Mac16,8".into(),
@@ -49,6 +49,14 @@ mod tests {
                     wifi_enabled: true,
                     bluetooth_enabled: false,
                     host_version: "0.1.5".into(),
+                }),
+                // 登录态用户资料: 未登录不填(与 kit 服务端 Hello 语义一致)
+                user_info: Some(UserInfo {
+                    user_id: "user-1".into(),
+                    username: "user-1".into(),
+                    nickname: "用户一".into(),
+                    mobile: "13800138000".into(),
+                    avatar: "https://example.com/a.png".into(),
                 }),
             })),
         };
@@ -64,6 +72,48 @@ mod tests {
                 assert_eq!(info.device_model, "Mac16,8");
                 assert_eq!(info.screen_width, 2560);
                 assert!(info.wifi_enabled);
+                let user = hello.user_info.expect("user_info present");
+                assert_eq!(user.user_id, "user-1");
+                assert_eq!(user.nickname, "用户一");
+                assert_eq!(user.mobile, "13800138000");
+            }
+            other => panic!("unexpected payload: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn user_info_frame_roundtrip() {
+        // 上行补报帧(登录后/变更时)
+        let report = ClientMessage {
+            payload: Some(ClientPayload::UserInfo(UserInfo {
+                user_id: "user-1".into(),
+                username: "user-1".into(),
+                nickname: "用户一".into(),
+                mobile: "13800138000".into(),
+                avatar: String::new(),
+            })),
+        };
+        let decoded =
+            ClientMessage::decode(report.encode_to_vec().as_slice()).expect("decode user info");
+
+        match decoded.payload {
+            Some(ClientPayload::UserInfo(user)) => {
+                assert_eq!(user.user_id, "user-1");
+                assert_eq!(user.nickname, "用户一");
+            }
+            other => panic!("unexpected payload: {other:?}"),
+        }
+
+        // 解绑帧: user_id 空 = 登出解绑(契约要求的显式解绑语义)
+        let unbind = ClientMessage {
+            payload: Some(ClientPayload::UserInfo(UserInfo::default())),
+        };
+        let decoded =
+            ClientMessage::decode(unbind.encode_to_vec().as_slice()).expect("decode unbind");
+
+        match decoded.payload {
+            Some(ClientPayload::UserInfo(user)) => {
+                assert!(user.user_id.is_empty());
             }
             other => panic!("unexpected payload: {other:?}"),
         }
@@ -74,7 +124,7 @@ mod tests {
         let assign = ServerMessage {
             payload: Some(ServerPayload::TaskAssign(TaskAssign {
                 task_id: 1001,
-                task_type: 1,
+                task_type: TaskType::Upgrade as i32,
                 attempt: 1,
                 payload: r#"{"version":"0.2.0"}"#.into(),
             })),
@@ -84,7 +134,7 @@ mod tests {
         match decoded.payload {
             Some(ServerPayload::TaskAssign(task)) => {
                 assert_eq!(task.task_id, 1001);
-                assert_eq!(task.task_type, 1);
+                assert_eq!(TaskType::try_from(task.task_type), Ok(TaskType::Upgrade));
             }
             other => panic!("unexpected payload: {other:?}"),
         }
@@ -103,6 +153,27 @@ mod tests {
             Some(ClientPayload::TaskAck(ack)) => {
                 assert_eq!(ack.task_id, 1001);
                 assert!(ack.success);
+            }
+            other => panic!("unexpected payload: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn task_progress_roundtrip() {
+        let progress = ClientMessage {
+            payload: Some(ClientPayload::TaskProgress(TaskProgress {
+                task_id: 1001,
+                status: TaskStatus::Running as i32,
+                result: "downloading".into(),
+            })),
+        };
+        let decoded =
+            ClientMessage::decode(progress.encode_to_vec().as_slice()).expect("decode progress");
+        match decoded.payload {
+            Some(ClientPayload::TaskProgress(p)) => {
+                assert_eq!(p.task_id, 1001);
+                assert_eq!(TaskStatus::try_from(p.status), Ok(TaskStatus::Running));
+                assert_eq!(p.result, "downloading");
             }
             other => panic!("unexpected payload: {other:?}"),
         }

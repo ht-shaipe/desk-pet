@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use channel_client::channel::{
     client_message::Payload as ClientPayload, server_message::Payload as ServerPayload,
-    ClientMessage, DeviceInfo, Hello, Heartbeat,
+    ClientMessage, DeviceInfo, Hello, Heartbeat, UserInfo,
 };
 use channel_client::{ChannelClient, ChannelClientConfig};
 use deskpet_os::device;
@@ -30,7 +30,8 @@ pub struct ChannelHandle {
 
 /// 启动实时连接运行时（在 tauri async runtime 上 spawn）。
 /// 重复调用会先取消旧连接再启动新连接，保证同时只有一条长连接。
-pub fn start(app: AppHandle, device_id: String, token: String) {
+/// `user` 为当前登录态用户资料（已登录必传，未登录传 None），随 Hello 上报服务端绑定设备归属。
+pub fn start(app: AppHandle, device_id: String, token: String, user: Option<UserInfo>) {
     let (out_tx, out_rx) = mpsc::channel::<ClientMessage>(32);
     let (cancel_tx, cancel_rx) = mpsc::channel::<()>(1);
 
@@ -46,13 +47,14 @@ pub fn start(app: AppHandle, device_id: String, token: String) {
         });
     }
 
-    tauri::async_runtime::spawn(run(app, device_id, token, out_tx, out_rx, cancel_rx));
+    tauri::async_runtime::spawn(run(app, device_id, token, user, out_tx, out_rx, cancel_rx));
 }
 
 async fn run(
     app: AppHandle,
     device_id: String,
     token: String,
+    user: Option<UserInfo>,
     mut out_tx: mpsc::Sender<ClientMessage>,
     mut out_rx: mpsc::Receiver<ClientMessage>,
     mut cancel_rx: mpsc::Receiver<()>,
@@ -85,15 +87,15 @@ async fn run(
                 }
             };
 
-        // 首帧 Hello（携带设备信息快照）
+        // 首帧 Hello（携带设备信息快照 + 登录态用户资料）
         let device_info = collect_device_info(&app).await;
         let hello = ClientMessage {
             payload: Some(ClientPayload::Hello(Hello {
                 device_id: device_id.clone(),
                 app_key: "desk-pet".into(),
                 version: version.clone(),
-                ip: String::new(),
                 device_info: Some(device_info),
+                user_info: user.clone(),
             })),
         };
         if out_tx.send(hello).await.is_err() {
@@ -254,18 +256,6 @@ fn handle_message(app: &AppHandle, msg: channel_client::channel::ServerMessage) 
         }
         Some(ServerPayload::TaskCancel(cancel)) => {
             let _ = app.emit("channel://task-cancel", json!({ "task_id": cancel.task_id }));
-            true
-        }
-        Some(ServerPayload::Upgrade(upgrade)) => {
-            let _ = app.emit(
-                "channel://upgrade",
-                json!({
-                    "version": upgrade.version,
-                    "url": upgrade.url,
-                    "md5": upgrade.md5,
-                    "force": upgrade.force,
-                }),
-            );
             true
         }
         Some(ServerPayload::Push(push)) => {

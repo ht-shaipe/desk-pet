@@ -2030,7 +2030,7 @@ async function deleteSelectedPhotos() {
                   <button
                     v-for="it in g.items"
                     :key="it.id"
-                    class="relative w-[104px] rounded-lg overflow-hidden border-2 bg-dp-btn-bg"
+                    class="relative w-[104px] rounded-lg overflow-hidden border-2 bg-dp-btn-bg group"
                     :class="dupSelection[g.hash]?.includes(it.id) ? 'border-[var(--el-color-danger,#f56c6c)]' : 'border-transparent'"
                     :title="dupSelection[g.hash]?.includes(it.id) ? t('images.markDelete') : t('images.keep')"
                     @click="toggleDupPick(g.hash, it.id)"
@@ -2041,7 +2041,15 @@ async function deleteSelectedPhotos() {
                       class="w-full aspect-square object-cover"
                       alt=""
                     />
+                    <span
+                      class="absolute top-1 left-1 hidden group-hover:flex w-5 h-5 rounded-full bg-black/45 items-center justify-center text-white/90 cursor-pointer"
+                      :title="`${t('images.locate')} · ${it.path}`"
+                      @click.stop="imagesRevealPath(it.path)"
+                    >
+                      <el-icon :size="11"><FolderOpened /></el-icon>
+                    </span>
                     <div class="px-1 py-0.5 text-[9.5px] text-dp-tertiary truncate">{{ it.name }}</div>
+                    <div class="px-1 pb-0.5 text-[9px] text-dp-tertiary truncate" :title="it.path">{{ parentDirOf(it.path) }}</div>
                     <el-icon
                       v-if="dupSelection[g.hash]?.includes(it.id)"
                       class="absolute top-1 right-1 text-[var(--el-color-danger,#f56c6c)]"

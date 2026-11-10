@@ -26,7 +26,8 @@ pub struct ChannelClientConfig {
     pub endpoint: String,
     /// 登录接口返回的访问 token。
     ///
-    /// 当前服务端未校验该 metadata，保留用于后续接入鉴权；
+    /// 以 `authorization: <token>`（原样，不带 Bearer 前缀）随 Open RPC 上行，
+    /// 服务端经 `ChannelBackend::verify_connect` 校验（默认放行，业务接入后生效）；
     /// 传空字符串时不会发送 `authorization`。
     pub token: String,
     pub connect_timeout: Duration,
@@ -87,14 +88,15 @@ impl ChannelClient {
 
     /// 打开双向流。`outbound` 由调用方通过 mpsc channel 驱动。
     ///
-    /// 非空 token 会写入 gRPC metadata 的 `authorization: Bearer <token>`。
+    /// 非空 token 会原样写入 gRPC metadata 的 `authorization: <token>`
+    /// （不带 Bearer 前缀，由业务侧定义凭证格式）。
     pub async fn open<S>(&mut self, outbound: S) -> Result<Streaming<ServerMessage>, ChannelError>
     where
         S: Stream<Item = ClientMessage> + Send + 'static,
     {
         let mut request = Request::new(outbound);
         if !self.token.is_empty() {
-            let token = MetadataValue::try_from(format!("Bearer {}", self.token))
+            let token = MetadataValue::try_from(self.token.clone())
                 .map_err(|e| ChannelError::InvalidAuthMetadata(e.to_string()))?;
             request.metadata_mut().insert("authorization", token);
         }

@@ -101,7 +101,10 @@ onMounted(() => {
   // 建立实时连接并注册事件监听（未登录也连：匿名设备身份，登录后带 token 重连）
   void configInited
     .then(() => {
-      void channelStart(config.settings.auth_token ?? "").catch(() => undefined);
+      // 已登录时随 Hello 上报登录态用户资料（auth_user 记录的是登录手机号）
+      const authUser = config.settings.auth_user ?? "";
+      const user = authUser.trim() ? { userId: authUser.trim(), mobile: authUser.trim() } : null;
+      void channelStart(config.settings.auth_token ?? "", user).catch(() => undefined);
       void initChannelListeners();
     })
     .catch(() => undefined);

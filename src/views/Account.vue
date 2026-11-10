@@ -4,7 +4,7 @@ import { useI18n } from "vue-i18n";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { ArrowRight, CircleCloseFilled, Loading, UserFilled } from "@element-plus/icons-vue";
 import { useConfigStore } from "@/stores/config";
-import { channelStart } from "@/api/channel";
+import { channelReportUser, channelStart } from "@/api/channel";
 import { initChannelListeners } from "@/composables/useChannel";
 import {
   ApiError,
@@ -219,7 +219,10 @@ async function submit() {
       return;
     }
     await config.setAuth(token, mobile.value.trim());
-    void channelStart(token).catch(() => undefined);
+    // 登录态用户资料随 Hello 首帧上报（user_id/mobile 均为登录手机号，业务侧账号体系唯一）
+    void channelStart(token, { userId: mobile.value.trim(), mobile: mobile.value.trim() }).catch(
+      () => undefined,
+    );
     void initChannelListeners();
     ElMessage.success(mode.value === "login" ? t("account.loginOk") : t("account.registerOk"));
   } catch (e) {
@@ -245,7 +248,13 @@ async function onLogout() {
     return;
   }
   await config.logout();
-  // 退出登录不断开实时通道：降级为匿名设备连接（服务端仍可下发设备级任务）
+  // 按协议先在旧会话上发空 user_info 帧显式解绑（仅匿名重连服务端不解绑），
+  // 再降级为匿名设备连接（服务端仍可下发设备级任务）
+  try {
+    await channelReportUser(null);
+  } catch {
+    // 无活跃连接或发送失败时忽略，登录态会随下次连接的 Hello 上报生效
+  }
   void channelStart("").catch(() => undefined);
   mode.value = "login";
   mobile.value = "";
