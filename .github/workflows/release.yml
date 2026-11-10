@@ -411,6 +411,104 @@ jobs:
           done
           echo "OK Fragment files cleaned up"
 
+  # 发布产物推送 hub：把各平台包文件（安装包/updater 归档/签名）与 latest.json
+  # 逐个上传到 https://hub.htui.cc/upload（multipart 字段 file，单文件/请求）。
+  # 接口无鉴权；推送失败按文件重试 5 次，仍失败则 job 置败（Release 已发布，仅标记 workflow 红）。
+  hub-upload:
+    name: Push artifacts to hub
+    needs: [publish, merge-manifest]
+    if: ${{ needs.publish.result == 'success' && needs['merge-manifest'].result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 20
+    env:
+      HUB_UPLOAD_URL: https://hub.htui.cc/upload
+    steps:
+      - name: Determine version
+        id: ver
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          fi
+          VERSION=$(printf '%s' "$VERSION" | sed 's/^v//' | tr -d '[:space:]')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Download release assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v${{ steps.ver.outputs.version }}"
+          REPO="${{ github.repository }}"
+          mkdir -p assets
+          # fragment-*.json 已在 merge-manifest 中清理，此时资产 = 各平台包 + 签名 + latest.json
+          n=0
+          until gh release download "$TAG" --repo "$REPO" --dir assets --clobber; do
+            n=$((n+1))
+            if [ "$n" -ge 5 ]; then
+              echo "::error::Release 资产下载失败（已重试 $n 次）"
+              exit 1
+            fi
+            echo "::warning::资产下载失败（第 $n/5 次），15s 后重试"
+            sleep 15
+          done
+          COUNT=$(find assets -type f | wc -l)
+          echo "Downloaded $COUNT asset(s):"
+          ls -lh assets
+          if [ "$COUNT" -eq 0 ]; then
+            echo "::error::Release $TAG 无可推送资产"
+            exit 1
+          fi
+          if [ ! -f "assets/latest.json" ]; then
+            echo "::error::assets/latest.json 缺失，拒绝推送不完整的产物集"
+            exit 1
+          fi
+
+      - name: Push assets to hub
+        shell: bash
+        run: |
+          shopt -s nullglob
+          FAIL=0
+          for f in assets/*; do
+            BASENAME=$(basename "$f")
+            SIZE=$(du -h "$f" | cut -f1)
+            echo "→ Pushing $BASENAME ($SIZE)"
+            OK=false
+            for i in 1 2 3 4 5; do
+              HTTP_CODE=$(curl -sS -o hub-response.json -w '%{http_code}' \
+                --connect-timeout 10 --max-time 600 \
+                -X POST "$HUB_UPLOAD_URL" \
+                -F "file=@$f") || {
+                echo "::warning::$BASENAME 网络错误（第 $i/5 次），10s 后重试"
+                sleep 10
+                continue
+              }
+              RESP_CODE=$(jq -r '.code' hub-response.json 2>/dev/null || echo "")
+              if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ] && [ "$RESP_CODE" = "200" ]; then
+                RELATIVE=$(jq -r '.result.relativePath // "?"' hub-response.json)
+                echo "  OK $BASENAME → $RELATIVE"
+                OK=true
+                break
+              fi
+              echo "::warning::$BASENAME 推送失败（HTTP $HTTP_CODE / code=$RESP_CODE，第 $i/5 次），10s 后重试"
+              cat hub-response.json || true
+              sleep 10
+            done
+            if [ "$OK" != "true" ]; then
+              echo "::error::$BASENAME 推送到 hub 失败（已重试 5 次）"
+              FAIL=1
+            fi
+          done
+          if [ "$FAIL" = "1" ]; then
+            echo "::error::部分产物推送 hub 失败，详见上方日志"
+            exit 1
+          fi
+          echo "OK All assets pushed to hub"
+
   # 所有打包（publish）与更新清单合并（merge-manifest）结束后回调外部接口。
   # 依赖 secrets.CALLBACK_URL（必填）与 secrets.CALLBACK_TOKEN（可选，Bearer）。
   # 未配置 CALLBACK_URL 时自动跳过；接口异常只记 warning，不会把已完成的发布标记为失败。
