@@ -6,7 +6,11 @@ name: Hub Upload
 # - 鉴权：请求头 X-Upload-Token，与服务端 release.upload_token 严格相等
 # - 字段：file（单文件/次）、appKey、version（兼容 v 前缀）、platform、changelog
 # - platform：0 通用 / 1 iOS / 2 Android / 3 Web / 4 Windows / 5 Linux / 6 macOS
-# - 幂等：同 appKey+version+platform 重复上传为更新记录（CI 重跑安全），文件按 md5 去重落盘
+# - 幂等：同 appKey+version+platform 重复上传为更新记录（CI 重跑安全），文件按目标名覆盖落盘
+# - 存储：文件名不带版本号，服务端只保留最新版本产物并自动清理老版本文件
+#   · 清单(latest.json) → apps/{appKey}/latest.json（每次发版覆盖，永远是最新）
+#   · 安装包 → apps/{appKey}/{appKey}_{平台后缀}{ext}（如 desk-pet_macos.dmg / desk-pet_windows.exe，
+#     下载地址跨版本稳定；同平台多次上传按顺序后传覆盖前传）
 # - 成功响应 {code:0, result:{filePath, fileMd5, ...}}
 #
 # 上传清单与顺序（顺序决定 platform 记录最终指向，后传覆盖前传）：
