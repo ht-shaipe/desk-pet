@@ -11,7 +11,34 @@ on:
         required: true
 
 jobs:
+  # 版本解析：全 workflow 单一来源（发布 tag 或手动输入 → 归一化校验 semver）。
+  # 下游 job 统一经 needs.resolve.outputs.version / .tag 消费，不再各自重复解析。
+  resolve:
+    runs-on: ubuntu-latest
+    permissions: {}
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      tag: v${{ steps.ver.outputs.version }}
+    steps:
+      - name: Determine version
+        id: ver
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          fi
+          # 规范化：去掉可能的 v 前缀与首尾空白，保证是合法 semver
+          VERSION=$(printf '%s' "$VERSION" | sed 's/^v//' | tr -d '[:space:]')
+          if ! printf '%s' "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+'; then
+            echo "::error::Determined version '$VERSION' is not a valid semver (expect e.g. 0.1.1, do NOT include a leading v)"
+            exit 1
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
   publish:
+    needs: resolve
     permissions:
       contents: write
     runs-on: ${{ matrix.os }}
@@ -51,27 +78,10 @@ jobs:
         shell: bash
         run: npm install
 
-      - name: Determine version
-        id: ver
-        shell: bash
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            VERSION="${{ github.event.inputs.version }}"
-          else
-            VERSION="${GITHUB_REF#refs/tags/v}"
-          fi
-          # 规范化：去掉可能的 v 前缀与首尾空白，保证是合法 semver
-          VERSION=$(printf '%s' "$VERSION" | sed 's/^v//' | tr -d '[:space:]')
-          if ! printf '%s' "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+'; then
-            echo "::error::Determined version '$VERSION' is not a valid semver (expect e.g. 0.1.1, do NOT include a leading v)"
-            exit 1
-          fi
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-
       - name: Sync tauri version
         shell: bash
         env:
-          APP_VERSION: ${{ steps.ver.outputs.version }}
+          APP_VERSION: ${{ needs.resolve.outputs.version }}
         run: |
           node -e "const fs=require('fs');const p='src-tauri/tauri.conf.json';const j=JSON.parse(fs.readFileSync(p));j.version=process.env.APP_VERSION;fs.writeFileSync(p,JSON.stringify(j,null,2));"
           echo "tauri.conf.json version synced to $APP_VERSION"
@@ -81,7 +91,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="v${{ steps.ver.outputs.version }}"
+          TAG="v${{ needs.resolve.outputs.version }}"
           # 幂等创建 + 重试：并发 job 竞态（already exists）与 GitHub API 瞬时 404/5xx 均靠重试兜底
           for i in 1 2 3 4 5; do
             if gh release view "$TAG" >/dev/null 2>&1; then
@@ -90,7 +100,7 @@ jobs:
               exit 0
             fi
             if gh release create "$TAG" \
-              --title "Desk Pet v${{ steps.ver.outputs.version }}" \
+              --title "Desk Pet v${{ needs.resolve.outputs.version }}" \
               --notes "See the assets below to download and install this version." \
               --draft=false; then
               echo "Release $TAG created"
@@ -147,7 +157,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="v${{ steps.ver.outputs.version }}"
+          TAG="v${{ needs.resolve.outputs.version }}"
           TARGET="${{ matrix.target }}"
           BUNDLE_DIR="target/${TARGET}/release/bundle"
 
@@ -215,8 +225,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="v${{ steps.ver.outputs.version }}"
-          VERSION="${{ steps.ver.outputs.version }}"
+          TAG="v${{ needs.resolve.outputs.version }}"
+          VERSION="${{ needs.resolve.outputs.version }}"
           TARGET="${{ matrix.target }}"
           REPO="${{ github.repository }}"
           BUNDLE_DIR="target/${TARGET}/release/bundle"
@@ -308,25 +318,13 @@ jobs:
         with:
           node-version: 20
 
-      - name: Determine version
-        id: ver
-        shell: bash
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            VERSION="${{ github.event.inputs.version }}"
-          else
-            VERSION="${GITHUB_REF#refs/tags/v}"
-          fi
-          VERSION=$(printf '%s' "$VERSION" | sed 's/^v//' | tr -d '[:space:]')
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-
       - name: Merge fragments into latest.json
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="v${{ steps.ver.outputs.version }}"
-          VERSION="${{ steps.ver.outputs.version }}"
+          TAG="v${{ needs.resolve.outputs.version }}"
+          VERSION="${{ needs.resolve.outputs.version }}"
           REPO="${{ github.repository }}"
 
           mkdir -p fragments
@@ -411,103 +409,20 @@ jobs:
           done
           echo "OK Fragment files cleaned up"
 
-  # 发布产物推送 hub：把各平台包文件（安装包/updater 归档/签名）与 latest.json
-  # 逐个上传到 https://hub.htui.cc/upload（multipart 字段 file，单文件/请求）。
-  # 接口无鉴权；推送失败按文件重试 5 次，仍失败则 job 置败（Release 已发布，仅标记 workflow 红）。
+  # 发布产物推送 hub：复用可复用工作流 hub-upload.yml（其他项目可经
+  # uses: ht-shaipe/desk-pet/.github/workflows/hub-upload.yml@<ref> 直接引用）。
   hub-upload:
     name: Push artifacts to hub
     needs: [publish, merge-manifest]
     if: ${{ needs.publish.result == 'success' && needs['merge-manifest'].result == 'success' }}
-    runs-on: ubuntu-latest
+    uses: ./.github/workflows/hub-upload.yml
     permissions:
       contents: read
-    timeout-minutes: 20
-    env:
-      HUB_UPLOAD_URL: https://hub.htui.cc/upload
-    steps:
-      - name: Determine version
-        id: ver
-        shell: bash
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            VERSION="${{ github.event.inputs.version }}"
-          else
-            VERSION="${GITHUB_REF#refs/tags/v}"
-          fi
-          VERSION=$(printf '%s' "$VERSION" | sed 's/^v//' | tr -d '[:space:]')
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-
-      - name: Download release assets
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TAG="v${{ steps.ver.outputs.version }}"
-          REPO="${{ github.repository }}"
-          mkdir -p assets
-          # fragment-*.json 已在 merge-manifest 中清理，此时资产 = 各平台包 + 签名 + latest.json
-          n=0
-          until gh release download "$TAG" --repo "$REPO" --dir assets --clobber; do
-            n=$((n+1))
-            if [ "$n" -ge 5 ]; then
-              echo "::error::Release 资产下载失败（已重试 $n 次）"
-              exit 1
-            fi
-            echo "::warning::资产下载失败（第 $n/5 次），15s 后重试"
-            sleep 15
-          done
-          COUNT=$(find assets -type f | wc -l)
-          echo "Downloaded $COUNT asset(s):"
-          ls -lh assets
-          if [ "$COUNT" -eq 0 ]; then
-            echo "::error::Release $TAG 无可推送资产"
-            exit 1
-          fi
-          if [ ! -f "assets/latest.json" ]; then
-            echo "::error::assets/latest.json 缺失，拒绝推送不完整的产物集"
-            exit 1
-          fi
-
-      - name: Push assets to hub
-        shell: bash
-        run: |
-          shopt -s nullglob
-          FAIL=0
-          for f in assets/*; do
-            BASENAME=$(basename "$f")
-            SIZE=$(du -h "$f" | cut -f1)
-            echo "→ Pushing $BASENAME ($SIZE)"
-            OK=false
-            for i in 1 2 3 4 5; do
-              HTTP_CODE=$(curl -sS -o hub-response.json -w '%{http_code}' \
-                --connect-timeout 10 --max-time 600 \
-                -X POST "$HUB_UPLOAD_URL" \
-                -F "file=@$f") || {
-                echo "::warning::$BASENAME 网络错误（第 $i/5 次），10s 后重试"
-                sleep 10
-                continue
-              }
-              RESP_CODE=$(jq -r '.code' hub-response.json 2>/dev/null || echo "")
-              if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ] && [ "$RESP_CODE" = "200" ]; then
-                RELATIVE=$(jq -r '.result.relativePath // "?"' hub-response.json)
-                echo "  OK $BASENAME → $RELATIVE"
-                OK=true
-                break
-              fi
-              echo "::warning::$BASENAME 推送失败（HTTP $HTTP_CODE / code=$RESP_CODE，第 $i/5 次），10s 后重试"
-              cat hub-response.json || true
-              sleep 10
-            done
-            if [ "$OK" != "true" ]; then
-              echo "::error::$BASENAME 推送到 hub 失败（已重试 5 次）"
-              FAIL=1
-            fi
-          done
-          if [ "$FAIL" = "1" ]; then
-            echo "::error::部分产物推送 hub 失败，详见上方日志"
-            exit 1
-          fi
-          echo "OK All assets pushed to hub"
+    with:
+      tag: ${{ needs.resolve.outputs.tag }}
+    secrets:
+      # 显式映射（不继承全量 secrets）：只有上传令牌会传给可复用工作流
+      hub_token: ${{ secrets.HUB_UPLOAD_TOKEN }}
 
   # 所有打包（publish）与更新清单合并（merge-manifest）结束后回调外部接口。
   # 依赖 secrets.CALLBACK_URL（必填）与 secrets.CALLBACK_TOKEN（可选，Bearer）。
@@ -526,18 +441,6 @@ jobs:
       MERGE_RESULT: ${{ needs['merge-manifest'].result }}
       NEEDS_JSON: ${{ toJSON(needs) }}
     steps:
-      - name: Determine version
-        id: ver
-        shell: bash
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            VERSION="${{ github.event.inputs.version }}"
-          else
-            VERSION="${GITHUB_REF#refs/tags/v}"
-          fi
-          VERSION=$(printf '%s' "$VERSION" | sed 's/^v//' | tr -d '[:space:]')
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-
       - name: Warn when callback URL is missing
         if: ${{ env.CALLBACK_URL == '' }}
         run: echo "::warning::未配置 secrets.CALLBACK_URL，跳过发布回调接口"
@@ -546,10 +449,12 @@ jobs:
         if: ${{ env.CALLBACK_URL != '' }}
         continue-on-error: true
         env:
-          VERSION: ${{ steps.ver.outputs.version }}
+          VERSION: ${{ needs.resolve.outputs.version }}
         run: |
           set -euo pipefail
 
+          # resolve 失败（版本非法）时兜底取 ref 名，保证回调仍带可辨识信息
+          VERSION="${VERSION:-${GITHUB_REF_NAME#refs/tags/}}"
           TAG="v${VERSION}"
           SUCCESS=false
           if [ "$PUBLISH_RESULT" = "success" ] && [ "$MERGE_RESULT" = "success" ]; then
