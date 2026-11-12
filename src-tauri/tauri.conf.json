@@ -70,6 +70,7 @@
   "plugins": {
     "updater": {
       "endpoints": [
+        "https://hub.htui.cc/apps/desk-pet/latest.json",
         "https://github.com/ht-shaipe/desk-pet/releases/latest/download/latest.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDg0NDJFM0E5MDExQzFBN0MKUldSOEdod0JxZU5DaEFyV0dIUkJrV2xMQ1grNHh4OHhYVUd3OUFFOHV4MDdJRXVRNWRUUVNNWXgK",

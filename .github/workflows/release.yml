@@ -254,26 +254,20 @@ jobs:
           fi
           SIGNATURE=$(cat "$SIG_FILE")
 
-          # ARCHIVE_NAME 必须与 Upload release assets 上传的资产名同源：
-          # 直接取真正的产物文件名（而非从 .sig 推导），并做同样的空格→'.'归一化，
-          # 否则 productName 带空格时清单 URL 会指到不存在的资产，更新端报 404。
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            ARCHIVE_FILE=$(find "$BUNDLE_DIR/nsis" -name "*-setup.exe" -type f | head -1)
-          else
-            ARCHIVE_FILE=$(find "$BUNDLE_DIR/macos" -name "*.app.tar.gz" -type f | head -1)
-          fi
-          if [ -z "$ARCHIVE_FILE" ]; then
-            echo "::error::No updater archive found in $BUNDLE_DIR"
-            find "$BUNDLE_DIR" -type f
-            exit 1
-          fi
-          ARCHIVE_NAME=$(basename "$ARCHIVE_FILE" | tr ' ' '.')
-          # macOS两个 target 上传时按架构重命名了，url 也要指向重命名后的文件
+          # 清单 url 指向 hub 静态下载地址（与服务端扁平落盘名一致，hub-upload 阶段
+          # 负责把对应产物传上去）：
+          # - Windows(nsis)：{appKey}_windows.exe（更新器直接下载 setup.exe）
+          # - macOS：{appKey}_macos_{arch}.app.tar.gz（更新器下载 .app.tar.gz 而非 dmg）
+          # 签名与托管地址无关（minisign 对文件内容签名），同一份产物字节换托管地签名依旧有效。
+          # 注意：HOST 必须与 hub-upload.yml 的 upload-url 同源；扁平命名需新版 core 服务。
+          APP_KEY="${GITHUB_REPOSITORY#*/}"
+          HUB_BASE="https://hub.htui.cc/apps/${APP_KEY}"
           case "$TARGET" in
-            aarch64-apple-darwin) ARCHIVE_NAME="${ARCHIVE_NAME%.app.tar.gz}-aarch64.app.tar.gz" ;;
-            x86_64-apple-darwin)  ARCHIVE_NAME="${ARCHIVE_NAME%.app.tar.gz}-x86_64.app.tar.gz" ;;
+            x86_64-pc-windows-msvc)  DOWNLOAD_URL="${HUB_BASE}/${APP_KEY}_windows.exe" ;;
+            aarch64-apple-darwin)    DOWNLOAD_URL="${HUB_BASE}/${APP_KEY}_macos_aarch64.app.tar.gz" ;;
+            x86_64-apple-darwin)     DOWNLOAD_URL="${HUB_BASE}/${APP_KEY}_macos_x86_64.app.tar.gz" ;;
+            *) echo "::error::Unknown target $TARGET"; exit 1 ;;
           esac
-          DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${TAG}/${ARCHIVE_NAME}"
 
           echo "Platform:  $PLATFORM_KEY"
           echo "Signature: ${SIGNATURE:0:20}..."
@@ -372,23 +366,14 @@ jobs:
             console.log(JSON.stringify(manifest, null, 2));
           "
 
-          # 上传前校验清单里每个平台的 URL 都真实可达，防止资产名/清单名不一致再发 404
-          FAIL=0
-          for u in $(node -e "
-            const fs = require('fs');
-            const m = JSON.parse(fs.readFileSync('latest.json', 'utf8'));
-            for (const p of Object.values(m.platforms)) console.log(p.url);
-          "); do
-            CODE=$(curl -s -o /dev/null -w '%{http_code}' -L --max-time 30 "$u") || CODE=000
-            if [ "$CODE" != "200" ]; then
-              echo "::error::更新清单 URL 不可达 (HTTP $CODE): $u"
-              FAIL=1
-            fi
-          done
-          if [ "$FAIL" = "1" ]; then
-            echo "::error::latest.json 中存在不可达的下载地址，拒绝上传坏清单"
-            exit 1
-          fi
+          # 清单 url 指向 hub 扁平地址，对应文件在 hub-upload 阶段落盘，此处无法做
+          # 可达性校验；hub-upload 会在上传 latest.json 前校验所有 url 已在 hub 可达，
+          # 不可达则拒绝发布清单。
+          echo "Manifest URLs (reachability validated by hub-upload before publishing):"
+          node -e "
+            const m = JSON.parse(require('fs').readFileSync('latest.json', 'utf8'));
+            for (const p of Object.values(m.platforms)) console.log(' ', p.url);
+          "
 
           n=0
           until gh release upload "$TAG" latest.json --clobber --repo "$REPO"; do
