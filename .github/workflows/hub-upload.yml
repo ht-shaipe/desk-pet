@@ -183,6 +183,7 @@ jobs:
             for i in 1 2 3 4 5; do
               HTTP_CODE=$(curl -sS -o hub-response.json -w '%{http_code}' \
                 --connect-timeout 10 --max-time 900 \
+                --speed-limit 1024 --speed-time 60 \
                 -X POST "$UPLOAD_URL" "${FORM[@]}") || {
                 echo "::warning::$BASENAME 网络错误（第 $i/5 次），10s 后重试"
                 sleep 10
