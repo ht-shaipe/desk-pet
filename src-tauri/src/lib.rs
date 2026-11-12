@@ -1,3 +1,5 @@
+mod ai_usage;
+mod ai_usage_pricing;
 mod channel;
 mod mcp;
 mod paths;
@@ -126,6 +128,8 @@ pub fn run() {
             tauri_cmds::monitor_cmds::monitor_sample,
             tauri_cmds::monitor_cmds::monitorbar_toggle,
             tauri_cmds::monitor_cmds::monitor_menubar_set,
+            tauri_cmds::ai_usage_cmds::ai_usage_refresh,
+            tauri_cmds::ai_usage_cmds::ai_usage_query,
         ])
         // img:// 图片数据源:缩略图与原图按 id 反查 DB,配合 WebView immutable 缓存。
         // 异步注册:协议回调在主线程触发,解码/读盘必须丢到阻塞线程池,否则卡死整个界面
@@ -188,6 +192,8 @@ pub fn run() {
             }
             tray::create_tray(handle, &locale, &app_name)?;
             tauri_cmds::clipboard_cmds::start_poll(handle.clone());
+            // AI 编程用量：后台每 5 分钟增量扫描本地日志（无日志目录时为空操作）
+            tauri_cmds::ai_usage_cmds::start_poll(handle.clone());
             // MCP：静默连接启用的外部服务器（失败只记日志）
             mcp::connect_enabled_at_startup(handle);
 

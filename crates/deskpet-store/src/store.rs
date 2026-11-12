@@ -332,7 +332,34 @@ CREATE TABLE IF NOT EXISTS doc_item (
     added_at INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_doc_item_dir ON doc_item(dir_id);
-CREATE INDEX IF NOT EXISTS idx_doc_item_name ON doc_item(name);";
+CREATE INDEX IF NOT EXISTS idx_doc_item_name ON doc_item(name);
+CREATE TABLE IF NOT EXISTS ai_usage_event (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tool TEXT NOT NULL,
+    ts INTEGER NOT NULL,
+    model TEXT NOT NULL DEFAULT '',
+    project TEXT NOT NULL DEFAULT '',
+    input_tokens INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    cache_read INTEGER NOT NULL DEFAULT 0,
+    cache_write INTEGER NOT NULL DEFAULT 0,
+    cost_usd REAL,
+    dedup_key TEXT UNIQUE
+);
+CREATE INDEX IF NOT EXISTS idx_ai_usage_event_ts ON ai_usage_event(ts);
+CREATE INDEX IF NOT EXISTS idx_ai_usage_event_tool_ts ON ai_usage_event(tool, ts);
+CREATE TABLE IF NOT EXISTS ai_usage_file_state (
+    path TEXT NOT NULL,
+    tool TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    mtime INTEGER NOT NULL,
+    parsed_lines INTEGER NOT NULL DEFAULT 0,
+    last_input INTEGER NOT NULL DEFAULT 0,
+    last_output INTEGER NOT NULL DEFAULT 0,
+    last_cache_read INTEGER NOT NULL DEFAULT 0,
+    last_cache_write INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (path, tool)
+);";
 
 /// 本地存储：SQLite（WAL），打开时建表并按需迁移旧 JSON 数据。
 pub struct Store {
@@ -356,6 +383,8 @@ impl Store {
         // 旧 chat_message 表无工具调用列时补加（同上，幂等；AI 工具调用持久化）
         let _ = conn.execute("ALTER TABLE chat_message ADD COLUMN tool_calls TEXT", []);
         let _ = conn.execute("ALTER TABLE chat_message ADD COLUMN tool_call_id TEXT", []);
+        // 旧 ai_usage_event 无 cost_usd 列时补加（同上，幂等；OpenCode 真实成本）
+        let _ = conn.execute("ALTER TABLE ai_usage_event ADD COLUMN cost_usd REAL", []);
         migrate_json(&conn, dir)?;
         purge_doc_items(&conn, dir);
         purge_orphan_image_items(&conn, dir);

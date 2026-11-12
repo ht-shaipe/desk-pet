@@ -1367,6 +1367,7 @@ dependencies = [
  "image",
  "kamadak-exif",
  "rmcp",
+ "rusqlite",
  "serde",
  "serde_json",
  "similar",

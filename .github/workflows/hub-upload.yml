@@ -11,7 +11,7 @@ name: Hub Upload
 #   · 清单(latest.json) → apps/{appKey}/latest.json（每次发版覆盖，永远是最新）
 #   · 安装包 → apps/{appKey}/{appKey}_{平台后缀}{ext}（如 desk-pet_macos.dmg / desk-pet_windows.exe，
 #     下载地址跨版本稳定；同平台多次上传按顺序后传覆盖前传）
-# - 成功响应 {code:0, result:{filePath, fileMd5, ...}}
+# - 成功响应 {code:200, result:{filePath, fileMd5, ...}}（兼容旧契约 code:0；HTTP 亦为 2xx）
 #
 # 上传清单与顺序（顺序决定 platform 记录最终指向，后传覆盖前传）：
 #   1. latest.json            → platform 0
@@ -189,7 +189,12 @@ jobs:
                 continue
               }
               RESP_CODE=$(jq -r '.code' hub-response.json 2>/dev/null || echo "")
-              if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ] && [ "$RESP_CODE" = "0" ]; then
+              # 成功判定：HTTP 2xx 且业务 code 为 0（旧契约）或 2xx（现契约返回 200）
+              case "$RESP_CODE" in
+                0|2??) BIZ_OK=true ;;
+                *) BIZ_OK=false ;;
+              esac
+              if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ] && [ "$BIZ_OK" = "true" ]; then
                 FILE_PATH=$(jq -r '.result.filePath // "?"' hub-response.json)
                 echo "  OK $BASENAME → $FILE_PATH"
                 OK=true

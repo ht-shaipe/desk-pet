@@ -66,3 +66,7 @@ tree-sitter-yaml = "0.7.2"
 
 [dev-dependencies]
 tempfile = { workspace = true }
+# test feature：tauri::test::mock_app，供 AI 用量扫描等需要 AppHandle 的逻辑做离线集成测试
+tauri = { version = "2", features = ["test"] }
+# 测试 fixture：构造 opencode.db 样本（与 deskpet-store 同版本，不引入新 crate）
+rusqlite = { workspace = true }

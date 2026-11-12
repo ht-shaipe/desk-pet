@@ -1,6 +1,6 @@
 import type { Component } from "vue";
 import { defineAsyncComponent } from "vue";
-import { Crop, Connection, Cpu, Delete, Document, Lock, MagicStick, Postcard, ScaleToOriginal, Switch } from "@element-plus/icons-vue";
+import { Coin, Crop, Connection, Cpu, Delete, Document, Lock, MagicStick, Postcard, ScaleToOriginal, Switch } from "@element-plus/icons-vue";
 
 /** 工具箱内一个工具的注册信息。 */
 export interface ToolboxTool {
@@ -92,5 +92,12 @@ export const TOOLBOX_TOOLS: ToolboxTool[] = [
     descKey: "toolbox.tools.formatter.desc",
     icon: MagicStick,
     component: defineAsyncComponent(() => import("./tools/FormatterTool.vue")),
+  },
+  {
+    id: "aiusage",
+    titleKey: "toolbox.tools.aiusage.title",
+    descKey: "toolbox.tools.aiusage.desc",
+    icon: Coin,
+    component: defineAsyncComponent(() => import("./tools/AiUsageTool.vue")),
   },
 ];

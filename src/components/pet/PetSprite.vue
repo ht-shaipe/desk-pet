@@ -1,15 +1,17 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useUiStore } from "@/stores/ui";
 import { useConfigStore } from "@/stores/config";
 import { usePomodoroStore } from "@/stores/pomodoro";
+import { useAiUsageStore, formatCompactTokens } from "@/stores/aiUsage";
 import { usePetDrag } from "@/composables/usePetDrag";
 import { petWrapSize, spriteSize as normalizeSpriteSize } from "@/lib/windowCtl";
 
 const ui = useUiStore();
 const config = useConfigStore();
 const pomo = usePomodoroStore();
+const aiUsage = useAiUsageStore();
 
 const dragHandlers = usePetDrag({
   onClick: () => ui.toggleExpanded(),
@@ -36,6 +38,17 @@ const showCountdown = computed(() => pomo.running && !ui.expanded);
 /** 收起面板且开启时钟时显示当前时间；与倒计时同槽位，计时中让位给倒计时 */
 const showClock = computed(() => config.settings.pet_clock === true && !ui.expanded && !showCountdown.value);
 
+/** 收起面板且开启徽标时显示今日 AI token 总量；最低优先级，仅当前两个槽位都空时显示 */
+const showAiUsage = computed(
+  () =>
+    config.settings.pet_ai_usage === true &&
+    !ui.expanded &&
+    !showCountdown.value &&
+    !showClock.value &&
+    aiUsage.todayLoaded &&
+    aiUsage.todayTokens > 0,
+);
+
 const clockText = ref("");
 
 function tickClock() {
@@ -52,6 +65,15 @@ onMounted(() => {
   tickClock();
   clockTimer = setInterval(tickClock, 1000);
 });
+
+// 徽标开启时才拉取今日用量（扫描 + 查询 + 监听后台广播）；运行时切换开关即时生效
+watch(
+  () => config.settings.pet_ai_usage === true,
+  (on) => {
+    if (on) void aiUsage.init();
+  },
+  { immediate: true },
+);
 
 onUnmounted(() => {
   if (clockTimer !== undefined) {
@@ -85,6 +107,12 @@ onUnmounted(() => {
       class="absolute bottom-0 left-1/2 -translate-x-1/2 py-0 px-1 bg-[rgba(31,41,55,0.6)] text-white text-[11px] font-semibold font-mono leading-[1.5] tracking-[0.5px] rounded-full shadow-[0_1px_3px_rgba(0,0,0,0.16)] pointer-events-none z-[21] select-none"
     >
       {{ clockText }}
+    </div>
+    <div
+      v-else-if="showAiUsage"
+      class="absolute bottom-0 left-1/2 -translate-x-1/2 py-px px-1.5 bg-[rgba(31,41,55,0.8)] text-white text-[10px] font-semibold font-mono leading-[1.5] tracking-[0.5px] rounded-full shadow-[0_1px_4px_rgba(0,0,0,0.28)] pointer-events-none z-[21] select-none"
+    >
+      AI {{ formatCompactTokens(aiUsage.todayTokens) }}
     </div>
   </div>
 </template>

@@ -119,6 +119,9 @@ pub struct AppSettings {
     /// 收起面板时在精灵下方显示时钟，缺省开启（由前端归一化）
     #[serde(default)]
     pub pet_clock: Option<bool>,
+    /// 收起面板时在精灵下方显示今日 AI 用量摘要（token 数），缺省关闭
+    #[serde(default)]
+    pub pet_ai_usage: Option<bool>,
     /// MCP 服务器配置列表（AI 对话可调用的外部工具来源）
     #[serde(default)]
     pub mcp_servers: Vec<McpServerConfig>,
@@ -173,6 +176,7 @@ impl Default for AppSettings {
             pomo_short_min: None,
             pomo_long_min: None,
             pet_clock: None,
+            pet_ai_usage: None,
             mcp_servers: Vec::new(),
             monitor_bar_open: None,
             monitor_bar_click_through: None,

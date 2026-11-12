@@ -159,6 +159,8 @@ export interface AppSettings {
   pomo_long_min?: number | null;
   /** 收起面板时在精灵下方显示时钟，缺省 true */
   pet_clock?: boolean | null;
+  /** 收起面板时在精灵下方显示今日 AI token 用量徽标，缺省 false */
+  pet_ai_usage?: boolean | null;
   /** MCP 服务器配置列表 */
   mcp_servers?: McpServerConfig[] | null;
   /** 悬浮监控条是否显示（主窗口启动时据此自动恢复） */
@@ -710,4 +712,26 @@ export interface MonitorSample {
   memory: MemorySample;
   network: NetworkSample;
   volumes: VolumeSample[];
+}
+
+/* ---------- AI 用量 ---------- */
+
+/** AI 用量聚合行：token 计数 + 估算成本（未知价格为 null，显示 "—"） */
+export interface AiUsageRow {
+  key: string;
+  input: number;
+  output: number;
+  cache_read: number;
+  cache_write: number;
+  cost_usd: number | null;
+}
+
+/** 时间范围 [from_ms, to_ms) 的用量聚合结果 */
+export interface AiUsageRangeResult {
+  /** 库里是否有任何事件（区分「未检测到日志」与「该时段无用量」） */
+  has_any: boolean;
+  totals: AiUsageRow;
+  by_tool: AiUsageRow[];
+  by_model: AiUsageRow[];
+  by_project: AiUsageRow[];
 }

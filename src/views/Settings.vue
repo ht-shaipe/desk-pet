@@ -305,6 +305,16 @@ async function onAutostart(val: string | number | boolean) {
                 @change="(v: string | number | boolean) => config.setPetClock(Boolean(v))"
               />
             </div>
+            <div class="flex items-center gap-3 py-3 px-2.5 rounded-[10px] transition-[background] duration-150 ease-[ease] hover:bg-dp-hover-bg">
+              <div class="mr-auto">
+                <div class="text-[13px] font-medium text-dp-primary">{{ t("settings.petAiUsage") }}</div>
+                <div class="text-xs text-dp-tertiary mt-0.5">{{ t("settings.petAiUsageDesc") }}</div>
+              </div>
+              <el-switch
+                :model-value="config.settings.pet_ai_usage === true"
+                @change="(v: string | number | boolean) => config.setPetAiUsage(Boolean(v))"
+              />
+            </div>
           </div>
         </el-scrollbar>
       </el-tab-pane>

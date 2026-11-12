@@ -149,6 +149,7 @@ export const useConfigStore = defineStore("config", () => {
     accent_color: null,
     app_name: DEFAULT_APP_NAME,
     pet_clock: true,
+    pet_ai_usage: false,
     monitor_bar_open: false,
     monitor_bar_click_through: false,
     monitor_bar_cpu: true,
@@ -355,6 +356,12 @@ export const useConfigStore = defineStore("config", () => {
     schedulePersist();
   }
 
+  /** 切换收起态宠物 AI 用量徽标显示。 */
+  async function setPetAiUsage(enabled: boolean) {
+    settings.value.pet_ai_usage = enabled;
+    schedulePersist();
+  }
+
   /** 悬浮监控条开关（窗口开/关由 monitorbar_toggle 执行，这里只持久化并同步 UI）。 */
   async function setMonitorBar(open: boolean) {
     settings.value.monitor_bar_open = open;
@@ -536,6 +543,7 @@ export const useConfigStore = defineStore("config", () => {
       pomo_short_min: clampPomoMin(s.pomo_short_min),
       pomo_long_min: clampPomoMin(s.pomo_long_min),
       pet_clock: s.pet_clock == null ? true : Boolean(s.pet_clock),
+      pet_ai_usage: s.pet_ai_usage == null ? false : Boolean(s.pet_ai_usage),
       mcp_servers: normalizeMcpServers(s.mcp_servers),
       monitor_bar_open: s.monitor_bar_open == null ? false : Boolean(s.monitor_bar_open),
       monitor_bar_click_through:
@@ -614,6 +622,7 @@ export const useConfigStore = defineStore("config", () => {
     setShowDock,
     setPomoMinutes,
     setPetClock,
+    setPetAiUsage,
     setMonitorBar,
     setMonitorBarClickThrough,
     setMonitorBarSections,
