@@ -179,8 +179,12 @@ jobs:
             echo "→ Uploading $BASENAME ($SIZE) as platform=$PLATFORM arch=${ARCH:--}"
             FORM=(-H "X-Upload-Token: ${HUB_TOKEN}"
               -F "appKey=${APP_KEY}"
-              -F "version=${RELEASE_TAG}"
               -F "platform=${PLATFORM}")
+            # latest.json（platform=0）不带 version 上传：服务端据此落到规范路径 /apps/{app}/latest.json，
+            # 更新器固定读该路径；带 version 会被命名成 {appKey}_{version}_universal.json，规范路径永远停留在旧版本
+            if [ "$PLATFORM" != "0" ]; then
+              FORM+=(-F "version=${RELEASE_TAG}")
+            fi
             # arch 参与服务端文件命名与记录去重：macOS 双芯片 dmg/更新器归档必传，
             # 否则 aarch64 与 x86_64 落盘同名互相覆盖
             if [ -n "$ARCH" ]; then
@@ -234,6 +238,12 @@ jobs:
             esac
             # 清单必须能被更新器解析：回读全文并校验 version 与本次发布一致
             if [ "$PLATFORM" = "0" ]; then
+              # 服务端必须把清单落到规范路径 /apps/{app}/latest.json（不带 version 上传），更新器固定读该路径
+              if [ "$FILE_PATH" != "/apps/${APP_KEY}/latest.json" ]; then
+                echo "::error::latest.json 落盘路径非规范路径：${HUB_HOST}${FILE_PATH}（期望 /apps/${APP_KEY}/latest.json）"
+                echo "       服务端需在 version 缺省时以 latest.json 命名，否则更新器永远读到旧版本"
+                return 1
+              fi
               if ! curl -sS --connect-timeout 10 --max-time 60 "${HUB_HOST}${FILE_PATH}" -o /tmp/hub-latest.json \
                 || ! jq -e --arg v "${RELEASE_TAG#v}" '.version == $v' /tmp/hub-latest.json >/dev/null 2>&1; then
                 echo "::error::latest.json 回读校验失败：${HUB_HOST}${FILE_PATH} 内容缺失或 version 与 ${RELEASE_TAG} 不一致"
