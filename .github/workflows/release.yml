@@ -257,15 +257,18 @@ jobs:
           # 清单 url 指向 hub 静态下载地址（与服务端扁平落盘名一致，hub-upload 阶段
           # 负责把对应产物传上去）：
           # - Windows(nsis)：{appKey}_windows.exe（更新器直接下载 setup.exe）
-          # - macOS：{appKey}_{版本}_macos_{arch}.app.tar.gz（更新器下载 .app.tar.gz 而非 dmg）
+          # - macOS：{appKey}_macos_{arch}.app.tar.gz（更新器下载 .app.tar.gz 而非 dmg）
           # 签名与托管地址无关（minisign 对文件内容签名），同一份产物字节换托管地签名依旧有效。
-          # 注意：HOST 必须与 hub-upload.yml 的 upload-url 同源；命名带版本号，与服务端落盘规则一致。
+          # 注意 1：HOST 必须与 hub-upload.yml 的 upload-url 同源。
+          # 注意 2：URL 不带版本号——服务端 build_saved_name 按扁平名落盘
+          #   （desk-pet_windows.exe / desk-pet_macos_aarch64.app.tar.gz），跨版本稳定；
+          #   带版本号会 404（v0.1.30 即因此失败）。
           APP_KEY="${GITHUB_REPOSITORY#*/}"
           HUB_BASE="https://hub.htui.cc/apps/${APP_KEY}"
           case "$TARGET" in
-            x86_64-pc-windows-msvc)  DOWNLOAD_URL="${HUB_BASE}/${APP_KEY}_${VERSION}_windows.exe" ;;
-            aarch64-apple-darwin)    DOWNLOAD_URL="${HUB_BASE}/${APP_KEY}_${VERSION}_macos_aarch64.app.tar.gz" ;;
-            x86_64-apple-darwin)     DOWNLOAD_URL="${HUB_BASE}/${APP_KEY}_${VERSION}_macos_x86_64.app.tar.gz" ;;
+            x86_64-pc-windows-msvc)  DOWNLOAD_URL="${HUB_BASE}/${APP_KEY}_windows.exe" ;;
+            aarch64-apple-darwin)    DOWNLOAD_URL="${HUB_BASE}/${APP_KEY}_macos_aarch64.app.tar.gz" ;;
+            x86_64-apple-darwin)     DOWNLOAD_URL="${HUB_BASE}/${APP_KEY}_macos_x86_64.app.tar.gz" ;;
             *) echo "::error::Unknown target $TARGET"; exit 1 ;;
           esac
 
