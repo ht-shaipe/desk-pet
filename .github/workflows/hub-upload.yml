@@ -13,16 +13,16 @@ name: Hub Upload
 #     下载地址跨版本稳定；同平台多次上传按顺序后传覆盖前传）
 # - 成功响应 {code:200, result:{filePath, fileMd5, ...}}（兼容旧契约 code:0；HTTP 亦为 2xx）
 #
-# 上传清单与顺序（安装包/更新器归档先传，latest.json 最后传——清单生效即所有下载文件已就位）：
-#   1. .app.tar.gz(aarch64)   → platform 6 / arch aarch64（macOS 更新器归档）
-#   2. .app.tar.gz(x86_64)    → platform 6 / arch x86_64
-#   3. dmg(aarch64)           → platform 6 / arch aarch64（记录最终指向 dmg 供下载页）
-#   4. dmg(x64)               → platform 6 / arch x86_64
-#   5. msi                    → platform 4
-#   6. exe(nsis setup)        → platform 4（Windows 记录最终指向 nsis 安装包）
-#   7. 清单 URL 可达性校验（全部 200 且 content-type 非 text/html 才继续；
-#      不可达或返回前端页面都拒绝发布坏清单）
-#   8. latest.json            → platform 0
+# 上传方式（并行分组，安装包/更新器归档先传，latest.json 最后传——清单生效即所有下载文件已就位）：
+#   组间并行、组内串行（服务端同 app+version+platform+arch 后传覆盖前传，组内顺序保证
+#   记录最终指向 dmg 供下载页 / exe 供 Windows 更新器）：
+#   · macos-aarch64：.app.tar.gz → dmg（platform 6 / arch aarch64）
+#   · macos-x86_64： .app.tar.gz → dmg（platform 6 / arch x86_64）
+#   · windows：      msi → exe(nsis setup)（platform 4）
+#   全部组完成后：清单 URL 可达性校验（全部 200 且 content-type 非 text/html 才继续；
+#   不可达或返回前端页面都拒绝发布坏清单），最后传 latest.json（platform 0）。
+#   组间并行是必须的：实测 runner→hub 慢速链路下单文件 10-15min，串行 6 个文件
+#   会撞 job timeout（v0.1.29 即如此）。
 # .sig 不上传（签名文本已嵌入 latest.json）；Windows 更新器直接下载 setup.exe。
 # changelog 自动取 GitHub Release notes；token 缺失时直接报错（服务端 401）。
 #
@@ -164,6 +164,8 @@ jobs:
         shell: bash
         run: |
           shopt -s nullglob
+          # 并行上传的响应文件彼此隔离（多个后台组同时 curl -o，不能用固定文件名）
+          RESP_DIR=$(mktemp -d)
 
           # 单文件上传：参数 "路径|platform|arch"（arch 空串=不区分）。
           # 5 次重试；成功判定 HTTP 2xx 且业务 code 为 0（旧契约）或 2xx（现契约返回 200）。
@@ -173,7 +175,7 @@ jobs:
             local REST="${entry#*|}"
             local PLATFORM="${REST%%|*}"
             local ARCH="${REST#*|}"
-            local BASENAME SIZE FORM OK HTTP_CODE RESP_CODE BIZ_OK FILE_PATH i
+            local BASENAME SIZE FORM OK HTTP_CODE RESP_CODE BIZ_OK FILE_PATH i RESP_FILE
             BASENAME=$(basename "$FILE")
             SIZE=$(du -h "$FILE" | cut -f1)
             echo "→ Uploading $BASENAME ($SIZE) as platform=$PLATFORM arch=${ARCH:--}"
@@ -196,27 +198,32 @@ jobs:
             FORM+=(-F "file=@${FILE}")
             OK=false
             for i in 1 2 3 4 5; do
-              HTTP_CODE=$(curl -sS -o hub-response.json -w '%{http_code}' \
+              # 每次尝试独立响应文件：并行组共享 $RESP_DIR，固定文件名会互相覆盖
+              RESP_FILE=$(mktemp "$RESP_DIR/resp.XXXXXX")
+              HTTP_CODE=$(curl -sS -o "$RESP_FILE" -w '%{http_code}' \
                 --connect-timeout 10 --max-time 900 \
                 --speed-limit 1024 --speed-time 60 \
                 -X POST "$UPLOAD_URL" "${FORM[@]}") || {
+                rm -f "$RESP_FILE"
                 echo "::warning::$BASENAME 网络错误（第 $i/5 次），10s 后重试"
                 sleep 10
                 continue
               }
-              RESP_CODE=$(jq -r '.code' hub-response.json 2>/dev/null || echo "")
+              RESP_CODE=$(jq -r '.code' "$RESP_FILE" 2>/dev/null || echo "")
               case "$RESP_CODE" in
                 0|2??) BIZ_OK=true ;;
                 *) BIZ_OK=false ;;
               esac
               if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ] && [ "$BIZ_OK" = "true" ]; then
-                FILE_PATH=$(jq -r '.result.filePath // "?"' hub-response.json)
+                FILE_PATH=$(jq -r '.result.filePath // "?"' "$RESP_FILE")
                 echo "  OK $BASENAME → $FILE_PATH"
                 OK=true
+                rm -f "$RESP_FILE"
                 break
               fi
               echo "::warning::$BASENAME 上传失败（HTTP $HTTP_CODE / code=${RESP_CODE:-?}，第 $i/5 次），10s 后重试"
-              cat hub-response.json 2>/dev/null || true
+              cat "$RESP_FILE" 2>/dev/null || true
+              rm -f "$RESP_FILE"
               echo ""
               sleep 10
             done
@@ -244,46 +251,66 @@ jobs:
                 echo "       服务端需在 version 缺省时以 latest.json 命名，否则更新器永远读到旧版本"
                 return 1
               fi
-              if ! curl -sS --connect-timeout 10 --max-time 60 "${HUB_HOST}${FILE_PATH}" -o /tmp/hub-latest.json \
-                || ! jq -e --arg v "${RELEASE_TAG#v}" '.version == $v' /tmp/hub-latest.json >/dev/null 2>&1; then
+              if ! curl -sS --connect-timeout 10 --max-time 60 "${HUB_HOST}${FILE_PATH}" -o /tmp/hub-latest.json.$$ \
+                || ! jq -e --arg v "${RELEASE_TAG#v}" '.version == $v' /tmp/hub-latest.json.$$ >/dev/null 2>&1; then
                 echo "::error::latest.json 回读校验失败：${HUB_HOST}${FILE_PATH} 内容缺失或 version 与 ${RELEASE_TAG} 不一致"
+                rm -f /tmp/hub-latest.json.$$
                 return 1
               fi
+              rm -f /tmp/hub-latest.json.$$
               echo "  Verified latest.json @ ${HUB_HOST}${FILE_PATH} (version matches)"
             else
               echo "  Verified $BASENAME @ ${HUB_HOST}${FILE_PATH} (${PROBE_CTYPE:-unknown-type})"
             fi
           }
 
-          # 有序清单 "路径|platform|arch"：安装包与更新器归档先传，latest.json 最后传——
-          # 清单先生效会让已装用户按新版本号去下载尚未传完的文件
-          UPLOADS=()
-          # macOS 更新器归档（更新器下载 .app.tar.gz 而非 dmg）
-          for f in assets/*aarch64*.app.tar.gz; do UPLOADS+=("$f|6|aarch64"); done
-          for f in assets/*x86_64*.app.tar.gz assets/*x64*.app.tar.gz; do UPLOADS+=("$f|6|x86_64"); done
-          for f in assets/*.app.tar.gz; do
+          # 按 (platform, arch) 分组并行上传，组内串行——
+          # 服务端记录按 app+version+platform+arch 去重，同组后传覆盖前传，
+          # 组内顺序保证记录最终指向（dmg 供下载页 / exe 供 Windows 更新器）：
+          #   macos-aarch64: .app.tar.gz → dmg   macos-x86_64: .app.tar.gz → dmg
+          #   windows:       msi → exe
+          # 组间并行把串行 Σ(每文件 10-15min) 压成 max(单组时长)，
+          # 否则晚高峰链路 ~18KB/s 时 6 个文件串行会撞 job timeout（v0.1.29 即如此）
+          MAC_A=(); MAC_X=(); WIN=(); MISC=()
+          for f in assets/*aarch64*.app.tar.gz assets/*aarch64*.dmg; do MAC_A+=("$f|6|aarch64"); done
+          for f in assets/*x86_64*.app.tar.gz assets/*x64*.app.tar.gz assets/*x86_64*.dmg assets/*x64*.dmg; do MAC_X+=("$f|6|x86_64"); done
+          for f in assets/*.app.tar.gz assets/*.dmg; do
             case "$f" in *aarch64*|*x86_64*|*x64*) continue ;; esac
-            UPLOADS+=("$f|6|")
+            MISC+=("$f|6|")
           done
-          # macOS 安装包（记录最终指向 dmg 供下载页使用）
-          for f in assets/*aarch64*.dmg; do UPLOADS+=("$f|6|aarch64"); done
-          for f in assets/*x86_64*.dmg assets/*x64*.dmg; do UPLOADS+=("$f|6|x86_64"); done
-          for f in assets/*.dmg; do
-            case "$f" in *aarch64*|*x86_64*|*x64*) continue ;; esac
-            UPLOADS+=("$f|6|")
-          done
-          # Windows
-          for f in assets/*.msi; do UPLOADS+=("$f|4|"); done
-          for f in assets/*.exe; do UPLOADS+=("$f|4|"); done
+          for f in assets/*.msi; do WIN+=("$f|4|"); done
+          for f in assets/*.exe; do WIN+=("$f|4|"); done
 
-          echo "Upload plan (${#UPLOADS[@]} file(s) + latest.json):"
-          for e in "${UPLOADS[@]}"; do
-            echo "  platform=${e#*|}  ${e%%|*}"
-          done
+          echo "Upload plan (parallel groups):"
+          for e in ${MAC_A[@]+"${MAC_A[@]}"}; do echo "  [macos-aarch64] ${e%%|*}"; done
+          for e in ${MAC_X[@]+"${MAC_X[@]}"}; do echo "  [macos-x86_64]  ${e%%|*}"; done
+          for e in ${WIN[@]+"${WIN[@]}"};  do echo "  [windows]       ${e%%|*}"; done
+          for e in ${MISC[@]+"${MISC[@]}"}; do echo "  [misc]          ${e%%|*}"; done
 
           FAIL=0
-          for entry in "${UPLOADS[@]}"; do
-            upload_one "$entry" || FAIL=1
+          PIDS=(); GNAMES=()
+          launch_group() {
+            local gname="$1"; shift
+            [ $# -gt 0 ] || return 0
+            (
+              for e in "$@"; do
+                upload_one "$e" || exit 1
+              done
+            ) &
+            PIDS+=($!)
+            GNAMES+=("$gname")
+          }
+
+          launch_group "macos-aarch64" ${MAC_A[@]+"${MAC_A[@]}"}
+          launch_group "macos-x86_64" ${MAC_X[@]+"${MAC_X[@]}"}
+          launch_group "windows" ${WIN[@]+"${WIN[@]}"}
+          launch_group "misc" ${MISC[@]+"${MISC[@]}"}
+
+          for i in "${!PIDS[@]}"; do
+            if ! wait "${PIDS[$i]}"; then
+              echo "::error::上传组 ${GNAMES[$i]} 存在失败文件"
+              FAIL=1
+            fi
           done
 
           # 清单内所有下载地址必须已在 hub 可达（文件刚落盘；不可达说明命名/落盘不一致，
