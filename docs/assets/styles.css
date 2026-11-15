@@ -1275,6 +1275,22 @@ tbody td small {
   color: var(--text);
 }
 
+.start-alt {
+  margin-top: 16px;
+  max-width: 460px;
+  font-size: 12.5px;
+  line-height: 1.8;
+  color: var(--muted);
+}
+
+.start-alt a {
+  color: var(--accent);
+}
+
+.start-alt a:hover {
+  text-decoration: underline;
+}
+
 .start-facts {
   position: relative;
   display: flex;

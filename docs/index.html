@@ -183,12 +183,9 @@
               拖到任意角落待命，单击展开启动器、便签、番茄钟、剪贴板与工具箱。轻巧、置顶、开机即用。
             </p>
             <div class="cta-row">
-              <a
-                class="btn btn-primary"
-                href="https://github.com/ht-shaipe/desk-pet/releases/latest"
-                target="_blank"
-                rel="noreferrer noopener"
-              >
+              <!-- app.js 按访问平台把 href 换成对应 hub 直链（macOS dmg / Windows exe）；
+                   JS 不可用时回退到 #start 下载区 -->
+              <a class="btn btn-primary" id="heroDownload" href="#start">
                 <svg class="icon"><use href="#i-download" /></svg>下载最新版
               </a>
               <a
@@ -482,17 +479,27 @@ npm run tauri build  <span class="c-comment"># 打包发布</span></code></pre>
               <p class="eyebrow">Get started</p>
               <h2>下载，或者自己构建</h2>
               <p>
-                安装包由 GitHub Actions 自动构建：推送 <code>v*</code> 标签后，macOS（arm64 / x64）与
-                Windows 版本会同步产出，并附带签名更新清单。
+                安装包由 GitHub Actions 自动构建（推送 <code>v*</code> 标签后，macOS（arm64 / x64）与
+                Windows 版本同步产出），经 hub.htui.cc 分发并附带签名更新清单，下载地址跨版本稳定。
               </p>
               <div class="cta-row">
                 <a
                   class="btn btn-primary"
-                  href="https://github.com/ht-shaipe/desk-pet/releases/latest"
-                  target="_blank"
-                  rel="noreferrer noopener"
+                  href="https://hub.htui.cc/apps/desk-pet/desk-pet_macos_aarch64.dmg"
                 >
-                  <svg class="icon"><use href="#i-download" /></svg>前往 Releases
+                  <svg class="icon"><use href="#i-download" /></svg>macOS · Apple Silicon
+                </a>
+                <a
+                  class="btn btn-primary"
+                  href="https://hub.htui.cc/apps/desk-pet/desk-pet_macos_x86_64.dmg"
+                >
+                  <svg class="icon"><use href="#i-download" /></svg>macOS · Intel
+                </a>
+                <a
+                  class="btn btn-primary"
+                  href="https://hub.htui.cc/apps/desk-pet/desk-pet_windows.exe"
+                >
+                  <svg class="icon"><use href="#i-download" /></svg>Windows 10 / 11
                 </a>
                 <a
                   class="btn btn-ghost"
@@ -503,6 +510,17 @@ npm run tauri build  <span class="c-comment"># 打包发布</span></code></pre>
                   阅读文档<svg class="icon"><use href="#i-arrow" /></svg>
                 </a>
               </div>
+              <p class="start-alt">
+                另提供
+                <a href="https://hub.htui.cc/apps/desk-pet/desk-pet_windows.msi">.msi 安装格式</a>；
+                历史版本与源码归档见
+                <a
+                  href="https://github.com/ht-shaipe/desk-pet/releases"
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  >GitHub Releases</a
+                >。
+              </p>
             </div>
             <ul class="start-facts">
               <li>
@@ -539,7 +557,7 @@ npm run tauri build  <span class="c-comment"># 打包发布</span></code></pre>
         <nav class="footer-nav" aria-label="页脚导航">
           <a href="#features">功能</a>
           <a href="#architecture">架构</a>
-          <a href="https://github.com/ht-shaipe/desk-pet/releases/latest" target="_blank" rel="noreferrer noopener">下载</a>
+          <a href="#start">下载</a>
           <a href="https://github.com/ht-shaipe/desk-pet" target="_blank" rel="noreferrer noopener">GitHub</a>
         </nav>
         <p class="footer-copy">© 2026 Desk Pet · 使用 Tauri 2 与 Rust 构建</p>

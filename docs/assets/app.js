@@ -255,6 +255,26 @@
     });
   }
 
+  /* ---------- 下载按钮：按平台指向 hub 直链 ---------- */
+  const heroDownload = document.getElementById("heroDownload");
+  if (heroDownload) {
+    const HUB_FILES = "https://hub.htui.cc/apps/desk-pet/";
+    const ua = navigator.userAgent || "";
+    let url = "";
+    if (/Win/.test(ua)) {
+      url = HUB_FILES + "desk-pet_windows.exe";
+    } else if (/Mac/.test(ua)) {
+      // Apple 芯片上现代浏览器 navigator.platform 仍报 "MacIntel"，
+      // 以 maxTouchPoints > 1 区分（Intel 桌面设备报 0）；
+      // 误判时下载 x64 dmg，经 Rosetta 仍可运行
+      const appleSilicon = /arm64|aarch64/i.test(ua) || navigator.maxTouchPoints > 1;
+      url = HUB_FILES + (appleSilicon ? "desk-pet_macos_aarch64.dmg" : "desk-pet_macos_x86_64.dmg");
+    }
+    if (url) {
+      heroDownload.setAttribute("href", url);
+    }
+  }
+
   /* ---------- 移动端折叠菜单 ---------- */
   const navToggle = document.querySelector(".nav-toggle");
   const mobileNav = document.getElementById("mobileNav");
