@@ -93,10 +93,10 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    # 实测 runner→hub 上传吞吐可低至 ~18KB/s（跨境链路，14MB 需 13 分钟），
-    # 6 个安装包/归档串行可能超过 1 小时；20 分钟上限会把 job 掐死在半路
-    # （v0.1.26/27 即如此），放宽到 90，慢传由 curl --speed-limit 熔断重试兜底
-    timeout-minutes: 90
+    # 实测 runner→hub 上传吞吐可低至 ~15KB/s（跨境链路，14MB 需要 25 分钟以上），
+    # v0.1.33 的 5 次重试全部撞满 15 分钟 --max-time 被掐断：单次上限必须大于
+    # 「最差吞吐 × 最大文件」时长。放宽 job 到 300 分钟、单次到 40 分钟兜底
+    timeout-minutes: 300
     env:
       UPLOAD_URL: ${{ inputs.upload-url }}
       RELEASE_TAG: ${{ inputs.tag }}
@@ -200,7 +200,7 @@ jobs:
               # 每次尝试独立响应文件：并行组共享 $RESP_DIR，固定文件名会互相覆盖
               RESP_FILE=$(mktemp "$RESP_DIR/resp.XXXXXX")
               HTTP_CODE=$(curl -sS -o "$RESP_FILE" -w '%{http_code}' \
-                --connect-timeout 10 --max-time 900 \
+                --connect-timeout 10 --max-time 2400 \
                 --speed-limit 1024 --speed-time 60 \
                 -X POST "$UPLOAD_URL" "${FORM[@]}") || {
                 rm -f "$RESP_FILE"
@@ -259,7 +259,17 @@ jobs:
               rm -f /tmp/hub-latest.json.$$
               echo "  Verified latest.json @ ${HUB_HOST}${FILE_PATH} (version matches)"
             else
-              echo "  Verified $BASENAME @ ${HUB_HOST}${FILE_PATH} (${PROBE_CTYPE:-unknown-type})"
+              # 产物回读大小校验：防服务端对同名文件去重/未覆盖（2026-11 v0.1.33 实际发生：
+              # 3 个产物上传全部网络失败，仅清单更新成功，hub 留下旧产物 → 更新器签名校验失败）
+              local REMOTE_SIZE LOCAL_SIZE
+              REMOTE_SIZE=$(curl -sI --connect-timeout 10 --max-time 30 "${HUB_HOST}${FILE_PATH}" \
+                | tr -d '\r' | awk 'tolower($1)=="content-length:"{print $2; exit}') || REMOTE_SIZE=""
+              LOCAL_SIZE=$(stat -c%s "$FILE" 2>/dev/null || echo "")
+              if [ -n "$REMOTE_SIZE" ] && [ -n "$LOCAL_SIZE" ] && [ "$REMOTE_SIZE" != "$LOCAL_SIZE" ]; then
+                echo "::error::$BASENAME 回读校验失败：hub 上 ${FILE_PATH} 大小 ${REMOTE_SIZE} ≠ 本地 ${LOCAL_SIZE}（服务端未覆盖同名旧文件？）"
+                return 1
+              fi
+              echo "  Verified $BASENAME @ ${HUB_HOST}${FILE_PATH} (${PROBE_CTYPE:-unknown-type}, size=${REMOTE_SIZE:-?})"
             fi
           }
 
@@ -292,13 +302,22 @@ jobs:
             local gname="$1"; shift
             [ $# -gt 0 ] || return 0
             (
+              # 组内不再一败即退：v0.1.33 实际发生过 msi 失败后 exe 被跳过未尝试。
+              # 仍保持组内顺序（后传覆盖前传，exe 需最终指向最新），仅所有文件都尝试后统一报失败
+              GFAIL=0
               for e in "$@"; do
-                upload_one "$e" || exit 1
+                upload_one "$e" || GFAIL=1
               done
+              exit "$GFAIL"
             ) &
             PIDS+=($!)
             GNAMES+=("$gname")
           }
+
+          launch_group "macos-aarch64" ${MAC_A[@]+"${MAC_A[@]}"}
+          launch_group "macos-x86_64" ${MAC_X[@]+"${MAC_X[@]}"}
+          launch_group "windows" ${WIN[@]+"${WIN[@]}"}
+          launch_group "misc" ${MISC[@]+"${MISC[@]}"}
 
           launch_group "macos-aarch64" ${MAC_A[@]+"${MAC_A[@]}"}
           launch_group "macos-x86_64" ${MAC_X[@]+"${MAC_X[@]}"}
@@ -311,6 +330,14 @@ jobs:
               FAIL=1
             fi
           done
+
+          # 产物有任何失败时绝不更新清单：v0.1.33 实际发生过「3 个大文件上传失败，
+          # 但 latest.json 仍被上传」→ hub 变成旧产物 + 新清单，更新器签名校验必然失败。
+          # 清单必须最后传且仅在全部产物就位后生效。
+          if [ "$FAIL" = "1" ]; then
+            echo "::error::部分产物上传 hub 失败，跳过 latest.json 上传（保持线上旧清单不变）"
+            exit 1
+          fi
 
           # 清单内所有下载地址必须已在 hub 可达（文件刚落盘；不可达说明命名/落盘不一致，
           # 拒绝发布坏清单）
@@ -333,9 +360,9 @@ jobs:
 
           # latest.json 最后传（清单生效即意味着所有下载文件已就位）
           upload_one "assets/latest.json|0|" || FAIL=1
-
           if [ "$FAIL" = "1" ]; then
-            echo "::error::部分产物上传 hub 失败，详见上方日志"
+            echo "::error::latest.json 上传失败，详见上方日志（线上保持旧清单与旧产物，不存在签名不一致）"
             exit 1
           fi
+          echo "OK 全部产物与清单均已就位并通过回读校验"
           echo "OK All artifacts uploaded to hub"
