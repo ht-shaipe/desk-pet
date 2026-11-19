@@ -19,7 +19,17 @@ fast_image_resize = { workspace = true }
 gif = { workspace = true }
 ab_glyph = { workspace = true }
 sysinfo = { workspace = true }
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "gzip", "brotli", "deflate"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "gzip", "brotli", "deflate", "multipart", "stream", "cookies"] }
+tokio = { version = "1", default-features = false, features = ["fs"] }
+url = "2"
+mime_guess = "2"
+uuid = { version = "1", features = ["v4"] }
+md-5 = "0.11"
+sha1 = "0.11"
+sha2 = "0.11"
+hmac = "0.13"
+cookie_store = "0.22"
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-graphics = "0.25"
@@ -30,3 +40,4 @@ objc2-foundation = { version = "0.3", default-features = false, features = ["std
 
 [dev-dependencies]
 tempfile = { workspace = true }
+serde_json = "1"

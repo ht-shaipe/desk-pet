@@ -16,6 +16,7 @@ pub mod menubar;
 pub mod monitor;
 mod proc;
 pub mod pointer;
+pub mod template;
 pub mod watermark;
 #[cfg(target_os = "macos")]
 pub mod window;

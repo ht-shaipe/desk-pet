@@ -1,16 +1,35 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import { ElMessage } from "element-plus";
-import { Close, DocumentCopy, Plus, Promotion } from "@element-plus/icons-vue";
+import { ElMessage, ElMessageBox } from "element-plus";
+import { Close, Document, Fold, Expand, Promotion, Star } from "@element-plus/icons-vue";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { setAppLocale } from "@/i18n";
 import { getSettings } from "@/api/settings";
 import { applyAccentColor, applyTheme } from "@/lib/theme";
 import { startWindowResize, type ResizeDirection } from "@/lib/windowCtl";
-import { httpRequest } from "@/api/toolbox";
+import {
+  clearHttpHistory,
+  deleteHttpGroup,
+  deleteHttpSaved,
+  httpRequest,
+  listHttpHistory,
+  listHttpSaved,
+  renameHttpGroup,
+  upsertHttpSaved,
+} from "@/api/toolbox";
 import { copyToClipboard } from "@/api/clipboard";
-import type { HttpHeader, HttpRequestSpec, HttpResponseData } from "@/types";
+import { parseCurl, toCurl } from "@/lib/curlParser";
+import { toFetch, toPython } from "@/lib/codeGen";
+import RequestEditor from "@/components/http/RequestEditor.vue";
+import ResponseViewer from "@/components/http/ResponseViewer.vue";
+import SidebarPanel from "@/components/http/SidebarPanel.vue";
+import type {
+  HttpHistoryItem,
+  HttpRequestSpec,
+  HttpResponseData,
+  HttpSavedItem,
+} from "@/types";
 
 const { t } = useI18n();
 
@@ -44,7 +63,8 @@ function startResize(direction: ResizeDirection, event: PointerEvent) {
 
 onMounted(() => {
   void syncAppearance();
-  // 聚焦时重同步主题，保持与主窗一致
+  void refreshSaved();
+  void refreshHistory();
   window.addEventListener("focus", syncAppearance);
 });
 
@@ -53,142 +73,299 @@ onBeforeUnmount(() => {
 });
 
 /* ---------- 请求状态 ---------- */
-const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
-
-/**
- * JSON 模式下的输入框占位示例。
- * 不能放进 i18n：花括号会被 vue-i18n 消息编译器当作插值语法，渲染时抛错导致整块 UI 卡住。
- */
-const bodyPhJson = '{\n  "key": "value"\n}';
-
-/** 键值行带 uid：增删行时输入框内容不会串行 */
-interface KvRow {
-  uid: number;
-  name: string;
-  value: string;
-}
-let rowSeq = 0;
-function newRow(): KvRow {
-  return { uid: ++rowSeq, name: "", value: "" };
-}
-
-const url = ref("");
-const method = ref("GET");
-const params = ref<KvRow[]>([newRow()]);
-const headers = ref<KvRow[]>([newRow()]);
-const bodyType = ref<"json" | "text">("json");
-const body = ref("");
-
-const reqTab = ref<"params" | "body" | "headers">("params");
-const respTab = ref<"body" | "response" | "request">("body");
-const busy = ref(false);
-const resp = ref<HttpResponseData | null>(null);
-
-/** GET / HEAD 常不带体，但代理不拦截：填了就照原样发送 */
-const bodyless = computed(() => method.value === "GET" || method.value === "HEAD");
-const paramCount = computed(() => params.value.filter((r) => r.name.trim()).length);
-const headerCount = computed(() => headers.value.filter((r) => r.name.trim()).length);
-
-/** 参数页与请求头页共用一套行编辑器 */
-const activeRows = computed(() => (reqTab.value === "params" ? params.value : headers.value));
-
-function addRow() {
-  activeRows.value.push(newRow());
-}
-
-function removeRow(uid: number) {
-  const rows = activeRows.value;
-  const i = rows.findIndex((r) => r.uid === uid);
-  if (i >= 0) {
-    rows.splice(i, 1);
-  }
-}
-
-function toPairs(rows: KvRow[]): HttpHeader[] {
-  return rows
-    .filter((r) => r.name.trim())
-    .map((r) => ({ name: r.name.trim(), value: r.value }));
-}
-
-async function send() {
-  if (busy.value) {
-    return;
-  }
-  const target = url.value.trim();
-  if (!/^https?:\/\//i.test(target)) {
-    ElMessage.warning(t("toolbox.tools.http.invalidUrl"));
-    return;
-  }
-  const spec: HttpRequestSpec = {
-    url: target,
-    method: method.value,
-    params: toPairs(params.value),
-    headers: toPairs(headers.value),
-    bodyType: bodyType.value,
-    body: body.value || undefined,
+function emptySpec(): HttpRequestSpec {
+  return {
+    url: "",
+    method: "GET",
+    params: [],
+    headers: [],
+    body: "",
+    bodyType: "json",
+    form: [],
+    formFiles: [],
+    auth: { type: "none", token: "", username: "", password: "", key: "", value: "", in: "header" },
+    timeoutMs: undefined,
   };
-  busy.value = true;
+}
+
+const spec = ref<HttpRequestSpec>(emptySpec());
+  const resp = ref<HttpResponseData | null>(null);
+  const abortCtrl = ref<AbortController | null>(null);
+  /** 响应历史请求键：方法 + 原始 URL（与 Rust 侧 spec_key 格式一致） */
+  const specKey = computed(
+    () => `${spec.value.method.trim().toUpperCase()} ${spec.value.url.trim()}`,
+  );
+const busy = ref(false);
+
+const sidebarVisible = ref(true);
+const activeSavedId = ref<string | null>(null);
+const activeHistoryId = ref<string | null>(null);
+
+function normalizeLoaded(raw: Partial<HttpRequestSpec> | null): HttpRequestSpec {
+  return { ...emptySpec(), ...(raw ?? {}) };
+}
+
+  async function send() {
+    if (busy.value) {
+      return;
+    }
+    const target = spec.value.url.trim();
+    if (!/^https?:\/\//i.test(target)) {
+      ElMessage.warning(t("toolbox.tools.http.invalidUrl"));
+      return;
+    }
+    spec.value.url = target;
+    busy.value = true;
+    const ctrl = new AbortController();
+    abortCtrl.value = ctrl;
+    try {
+      resp.value = await httpRequest(spec.value, { signal: ctrl.signal });
+    } catch (e) {
+      // 用户主动取消时保留上一次响应，不提示错误
+      if ((e as DOMException)?.name !== "AbortError") {
+        resp.value = null;
+        ElMessage.error(String(e));
+      }
+    } finally {
+      busy.value = false;
+      abortCtrl.value = null;
+      // 成败均由 Rust 侧记入历史，发送后刷新
+      void refreshHistory();
+    }
+  }
+
+  /** 取消当前请求 */
+  function stop() {
+    abortCtrl.value?.abort();
+  }
+
+/* ---------- 收藏 ---------- */
+const saved = ref<HttpSavedItem[]>([]);
+const history = ref<HttpHistoryItem[]>([]);
+
+async function refreshSaved() {
   try {
-    resp.value = await httpRequest(spec);
-    respTab.value = "body";
-  } catch (e) {
-    resp.value = null;
-    ElMessage.error(String(e));
-  } finally {
-    busy.value = false;
+    saved.value = await listHttpSaved();
+  } catch {
+    saved.value = [];
   }
 }
 
-/** JSON 自动缩进展示，其余按原文 */
-const prettyBody = computed(() => {
-  const text = resp.value?.body ?? "";
-  if (!text) {
+async function refreshHistory() {
+  try {
+    history.value = await listHttpHistory();
+  } catch {
+    history.value = [];
+  }
+}
+
+function loadSaved(item: HttpSavedItem) {
+  spec.value = normalizeLoaded(tryParseSpec(item.spec));
+  activeSavedId.value = item.id;
+  activeHistoryId.value = null;
+  resp.value = null;
+}
+
+function loadHistory(item: HttpHistoryItem) {
+  spec.value = normalizeLoaded(tryParseSpec(item.spec));
+  activeHistoryId.value = item.id;
+  activeSavedId.value = null;
+  resp.value = null;
+}
+
+function tryParseSpec(json: string): Partial<HttpRequestSpec> | null {
+  try {
+    return JSON.parse(json || "{}") as Partial<HttpRequestSpec>;
+  } catch {
+    return null;
+  }
+}
+
+/* ---------- 保存对话框 ---------- */
+const saveDlg = ref(false);
+const editingId = ref<string | null>(null);
+const saveName = ref("");
+const saveGroup = ref("");
+
+const groupOptions = computed(() => [...new Set(saved.value.map((i) => i.group_name ?? ""))]);
+const editingItem = computed(() => saved.value.find((i) => i.id === editingId.value) ?? null);
+
+/** 新建时用地址路径段作为默认名 */
+function guessName(): string {
+  const url = spec.value.url.trim();
+  try {
+    const path = new URL(url).pathname;
+    const seg = path.split("/").filter(Boolean).pop();
+    return seg ?? "";
+  } catch {
     return "";
   }
-  try {
-    return JSON.stringify(JSON.parse(text), null, 2);
-  } catch {
-    return text;
-  }
-});
-
-const shownHeaders = computed<HttpHeader[]>(() => {
-  if (!resp.value) {
-    return [];
-  }
-  return respTab.value === "response" ? resp.value.responseHeaders : resp.value.requestHeaders;
-});
-
-function statusClass(status: number): string {
-  if (status >= 200 && status < 300) {
-    return "bg-[color-mix(in_srgb,var(--el-color-success,#67c23a)_16%,transparent)] text-[var(--el-color-success,#67c23a)]";
-  }
-  if (status < 400) {
-    return "bg-dp-tag-soft text-dp-accent";
-  }
-  return "bg-dp-danger-soft text-[var(--el-color-danger,#f56c6c)]";
 }
 
-function fmt(bytes: number): string {
-  if (bytes < 1024) {
-    return `${bytes} B`;
-  }
-  if (bytes < 1024 * 1024) {
-    return `${(bytes / 1024).toFixed(1)} KB`;
-  }
-  return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+function openSaveDialog(item?: HttpSavedItem) {
+  editingId.value = item?.id ?? null;
+  saveName.value = item?.name ?? guessName();
+  saveGroup.value = item?.group_name ?? "";
+  saveDlg.value = true;
 }
 
-const bodyPh = computed(() =>
-  bodyType.value === "json" ? bodyPhJson : t("toolbox.tools.http.bodyPhText"),
-);
-
-async function copyBody() {
-  if (!prettyBody.value) {
+async function confirmSave() {
+  const name = saveName.value.trim();
+  if (!name) {
+    ElMessage.warning(t("toolbox.tools.http.nameRequired"));
     return;
   }
-  await copyToClipboard(prettyBody.value);
-  ElMessage.success(t("toolbox.tools.http.copied"));
+  const existed = editingItem.value;
+  // 新条目排在目标组末尾
+  const siblings = saved.value.filter((i) => (i.group_name ?? "") === saveGroup.value);
+  const maxSort = siblings.reduce((acc, i) => Math.max(acc, i.sort ?? 0), 0);
+  const item: HttpSavedItem = {
+    id: existed?.id ?? "",
+    group_name: saveGroup.value.trim(),
+    name,
+    spec: JSON.stringify(spec.value),
+    sort: existed ? existed.sort : maxSort + 1,
+    pinned: existed?.pinned ?? false,
+    create_time: existed?.create_time ?? "",
+    update_time: "",
+  };
+  try {
+    await upsertHttpSaved(item);
+    saveDlg.value = false;
+    ElMessage.success(t("toolbox.tools.http.savedTo", { group: item.group_name || t("toolbox.tools.http.groupDefault") }));
+    void refreshSaved();
+    if (item.id) {
+      activeSavedId.value = item.id;
+    }
+  } catch (e) {
+    ElMessage.error(String(e));
+  }
+}
+
+/* ---------- 删除 / 重命名 ---------- */
+async function removeSaved(item: HttpSavedItem) {
+  try {
+    await ElMessageBox.confirm(
+      t("toolbox.tools.http.deleteSavedConfirm", { name: item.name || savedUrlOf(item) }),
+      t("common.delete"),
+      { type: "warning" },
+    );
+  } catch {
+    return;
+  }
+  try {
+    await deleteHttpSaved(item.id);
+    if (activeSavedId.value === item.id) {
+      activeSavedId.value = null;
+    }
+    void refreshSaved();
+  } catch (e) {
+    ElMessage.error(String(e));
+  }
+}
+
+function savedUrlOf(item: HttpSavedItem): string {
+  return tryParseSpec(item.spec)?.url ?? "";
+}
+
+async function removeGroup(group: string) {
+  const willDrop = saved.value.filter((i) => (i.group_name ?? "") === group);
+  try {
+    await ElMessageBox.confirm(
+      t("toolbox.tools.http.deleteGroupConfirm", { name: group || t("toolbox.tools.http.groupDefault") }),
+      t("toolbox.tools.http.deleteGroup"),
+      { type: "warning" },
+    );
+  } catch {
+    return;
+  }
+  try {
+    await deleteHttpGroup(group);
+    if (activeSavedId.value && willDrop.some((i) => i.id === activeSavedId.value)) {
+      activeSavedId.value = null;
+    }
+    void refreshSaved();
+  } catch (e) {
+    ElMessage.error(String(e));
+  }
+}
+
+async function doRenameGroup(group: string) {
+  let value: string;
+  try {
+    const result = await ElMessageBox.prompt(
+      t("toolbox.tools.http.groupNameLabel"),
+      t("toolbox.tools.http.renameGroup"),
+      { inputValue: group, inputPattern: /\S/, inputErrorMessage: t("toolbox.tools.http.nameRequired") },
+    );
+    value = result.value.trim();
+  } catch {
+    return;
+  }
+  if (!value || value === group) {
+    return;
+  }
+  try {
+    await renameHttpGroup(group, value);
+    void refreshSaved();
+  } catch (e) {
+    ElMessage.error(String(e));
+  }
+}
+
+async function clearHistoryAll() {
+  try {
+    await ElMessageBox.confirm(t("toolbox.tools.http.clearHistoryConfirm"), t("toolbox.tools.http.clearHistory"), {
+      type: "warning",
+    });
+  } catch {
+    return;
+  }
+  try {
+    await clearHttpHistory();
+    activeHistoryId.value = null;
+    void refreshHistory();
+  } catch (e) {
+    ElMessage.error(String(e));
+  }
+}
+
+/* ---------- cURL 导入 / 导出 ---------- */
+const curlDlg = ref(false);
+const curlText = ref("");
+
+function applyCurl() {
+  try {
+    const parsed = parseCurl(curlText.value);
+    spec.value = normalizeLoaded(parsed);
+    curlDlg.value = false;
+    curlText.value = "";
+    activeSavedId.value = null;
+    activeHistoryId.value = null;
+    ElMessage.success(t("toolbox.tools.http.curlOk"));
+  } catch {
+    ElMessage.error(t("toolbox.tools.http.curlFail"));
+  }
+}
+
+async function copyCode(kind: "curl" | "fetch" | "python") {
+  try {
+    const code = kind === "curl" ? toCurl(spec.value) : kind === "fetch" ? toFetch(spec.value) : toPython(spec.value);
+    await copyToClipboard(code);
+    ElMessage.success(t("toolbox.tools.http.copied"));
+  } catch (e) {
+    ElMessage.error(String(e));
+  }
+}
+
+/** 置顶/取消置顶：翻转后走 upsert（store 侧幂等） */
+async function togglePin(item: HttpSavedItem) {
+  try {
+    await upsertHttpSaved({ ...item, pinned: !item.pinned });
+    void refreshSaved();
+  } catch (e) {
+    ElMessage.error(String(e));
+  }
 }
 </script>
 
@@ -196,192 +373,123 @@ async function copyBody() {
   <div class="w-screen h-screen bg-[var(--el-bg-color)] text-dp-primary overflow-hidden select-none flex flex-col">
     <!-- 顶栏(拖拽区) -->
     <div
-      class="h-12 shrink-0 flex items-center gap-3 px-4 bg-dp-card-bg border-b border-dp-divider"
+      class="h-12 shrink-0 flex items-center gap-2 px-3 bg-dp-card-bg border-b border-dp-divider"
       data-tauri-drag-region
     >
-      <span class="text-sm font-semibold text-dp-primary" data-tauri-drag-region>
+      <el-button
+        size="small"
+        text
+        :icon="sidebarVisible ? Fold : Expand"
+        :title="t('toolbox.tools.http.toggleSidebar')"
+        class="shrink-0"
+        @click="sidebarVisible = !sidebarVisible"
+      />
+      <span class="text-sm font-semibold text-dp-primary shrink-0" data-tauri-drag-region>
         {{ t("toolbox.tools.http.title") }}
       </span>
       <span class="text-[11px] text-dp-tertiary truncate" data-tauri-drag-region>
         {{ t("toolbox.tools.http.proxyHint") }}
       </span>
-      <el-button size="small" :icon="Close" circle text class="ml-auto" @click="closeWindow" />
-    </div>
-
-    <!-- 请求工具行 -->
-    <div class="shrink-0 flex items-center gap-2 px-3 pt-3">
-      <el-select v-model="method" size="default" class="w-[108px] shrink-0">
-        <el-option v-for="m in METHODS" :key="m" :label="m" :value="m" />
-      </el-select>
-      <el-input
-        v-model="url"
-        size="default"
-        :placeholder="t('toolbox.tools.http.urlPh')"
-        class="flex-1 min-w-0 [&_.el-input\_\_inner]:font-mono [&_.el-input\_\_inner]:select-text"
-        @keyup.enter="send"
-      />
-      <el-button
-        size="default"
-        type="primary"
-        :icon="Promotion"
-        :loading="busy"
-        class="shrink-0"
-        @click="send"
-      >
-        {{ t("toolbox.tools.http.send") }}
+      <el-button size="small" :icon="Star" class="ml-auto shrink-0" @click="openSaveDialog()">
+        {{ t("toolbox.tools.http.saveReq") }}
       </el-button>
+      <el-button size="small" :icon="Document" class="shrink-0" @click="curlDlg = true">
+        {{ t("toolbox.tools.http.importCurl") }}
+      </el-button>
+      <el-button size="small" :icon="Close" circle text class="shrink-0" @click="closeWindow" />
     </div>
 
-    <!-- 两栏主体:左请求 / 右响应 -->
+    <!-- 三栏主体:侧栏 / 请求 / 响应 -->
     <div class="flex-1 min-h-0 flex gap-3 px-3 pb-3 pt-2.5">
-      <!-- 左:请求参数 -->
-      <section
-        class="w-[42%] shrink-0 flex flex-col min-h-0 p-3 bg-dp-card-bg border border-dp-card-border rounded-[10px]"
-      >
-        <el-radio-group v-model="reqTab" size="small">
-          <el-radio-button value="params">
-            {{ t("toolbox.tools.http.params") }}
-            <template v-if="paramCount">({{ paramCount }})</template>
-          </el-radio-button>
-          <el-radio-button value="body">{{ t("toolbox.tools.http.body") }}</el-radio-button>
-          <el-radio-button value="headers">
-            {{ t("toolbox.tools.http.headers") }}
-            <template v-if="headerCount">({{ headerCount }})</template>
-          </el-radio-button>
-        </el-radio-group>
+      <SidebarPanel
+        v-if="sidebarVisible"
+        :saved="saved"
+        :history="history"
+        :active-saved-id="activeSavedId"
+        :active-history-id="activeHistoryId"
+        @load-saved="loadSaved"
+        @edit-saved="openSaveDialog"
+        @delete-saved="removeSaved"
+        @rename-group="doRenameGroup"
+        @delete-group="removeGroup"
+        @toggle-pin="togglePin"
+        @load-history="loadHistory"
+        @clear-history="clearHistoryAll"
+      />
 
-        <!-- Params / Headers:键值行编辑器 -->
-        <el-scrollbar v-if="reqTab !== 'body'" class="flex-1 min-h-0 mt-2.5 dp-scroll">
-          <div class="flex flex-col gap-2 pr-1">
-            <div v-for="row in activeRows" :key="row.uid" class="flex items-center gap-1.5 min-w-0">
-              <el-input
-                v-model="row.name"
-                placeholder="key"
-                class="w-[38%] shrink-0 [&_.el-input\_\_inner]:text-[12px] [&_.el-input\_\_inner]:select-text"
-              />
-              <el-input
-                v-model="row.value"
-                placeholder="value"
-                class="flex-1 min-w-0 [&_.el-input\_\_inner]:text-[12px] [&_.el-input\_\_inner]:select-text"
-              />
-              <el-button size="small" text :icon="Close" class="shrink-0" @click="removeRow(row.uid)" />
-            </div>
-            <el-button size="small" text type="primary" :icon="Plus" @click="addRow">
-              {{ t("toolbox.tools.http.add") }}
-            </el-button>
-          </div>
-        </el-scrollbar>
+      <!-- 中:请求编辑(固定比例，与原双栏布局一致；侧栏收起后响应区变宽) -->
+      <RequestEditor :spec="spec" :busy="busy" class="w-[42%] shrink-0" @send="send" @stop="stop" @copy-code="copyCode" />
 
-        <!-- Body -->
-        <template v-else>
-          <el-radio-group v-model="bodyType" size="small" class="mt-2.5">
-            <el-radio-button value="json">{{ t("toolbox.tools.http.bodyJson") }}</el-radio-button>
-            <el-radio-button value="text">{{ t("toolbox.tools.http.bodyText") }}</el-radio-button>
-          </el-radio-group>
-          <div class="flex-1 min-h-0 mt-2">
-            <el-input
-              v-model="body"
-              type="textarea"
-              resize="none"
-              :placeholder="bodyPh"
-              class="h-full [&_.el-textarea\_\_inner]:h-full [&_.el-textarea\_\_inner]:text-[12px] [&_.el-textarea\_\_inner]:font-mono [&_.el-textarea\_\_inner]:leading-[1.6] [&_.el-textarea\_\_inner]:select-text"
-            />
-          </div>
-          <div
-            v-if="bodyless && body"
-            class="shrink-0 mt-1.5 text-[11px] leading-[1.6] text-[var(--el-color-warning,#e6a23c)]"
-          >
-            {{ t("toolbox.tools.http.bodyWarn") }}
-          </div>
-        </template>
-      </section>
-
-      <!-- 右:响应 -->
-      <section
-        class="flex-1 min-w-0 flex flex-col min-h-0 p-3 bg-dp-card-bg border border-dp-card-border rounded-[10px]"
-      >
-        <template v-if="resp">
-          <div class="shrink-0 flex items-center gap-2 min-w-0">
-            <span
-              class="px-2 py-0.5 rounded-md text-[11.5px] font-semibold shrink-0"
-              :class="statusClass(resp.status)"
-            >
-              {{ resp.status }}{{ resp.statusText ? ` ${resp.statusText}` : "" }}
-            </span>
-            <span class="text-[11px] text-dp-tertiary shrink-0">
-              {{ resp.durationMs }} ms · {{ fmt(resp.size) }}
-            </span>
-            <el-button
-              v-if="!resp.binary && prettyBody"
-              size="small"
-              text
-              type="primary"
-              :icon="DocumentCopy"
-              class="ml-auto shrink-0"
-              @click="copyBody"
-            >
-              {{ t("toolbox.tools.http.copyBody") }}
-            </el-button>
-          </div>
-          <div v-if="resp.truncated" class="shrink-0 mt-1 text-[11px] text-[var(--el-color-warning,#e6a23c)]">
-            {{ t("toolbox.tools.http.truncated") }}
-          </div>
-
-          <el-radio-group v-model="respTab" size="small" class="shrink-0 mt-2.5">
-            <el-radio-button value="body">{{ t("toolbox.tools.http.respBody") }}</el-radio-button>
-            <el-radio-button value="response">
-              {{ t("toolbox.tools.http.respHeaders") }}
-            </el-radio-button>
-            <el-radio-button value="request">
-              {{ t("toolbox.tools.http.reqHeaders") }}
-            </el-radio-button>
-          </el-radio-group>
-
-          <!-- 响应体/响应头:撑满剩余高度 -->
-          <el-scrollbar v-if="respTab === 'body'" class="flex-1 min-h-0 mt-2.5 dp-scroll">
-            <div v-if="resp.binary" class="text-[12px] text-dp-tertiary">
-              {{ t("toolbox.tools.http.binary") }}
-            </div>
-            <pre
-              v-else-if="prettyBody"
-              class="m-0 p-2.5 rounded-md bg-dp-panel-bg border border-dp-card-border text-[12px] leading-[1.55] font-mono whitespace-pre-wrap break-all text-dp-secondary"
-              >{{ prettyBody }}</pre
-            >
-            <div v-else class="text-[12px] text-dp-tertiary">
-              {{ t("toolbox.tools.http.emptyValue") }}
-            </div>
-          </el-scrollbar>
-          <el-scrollbar v-else class="flex-1 min-h-0 mt-2.5 dp-scroll">
-            <div class="flex flex-col gap-1.5 pr-1">
-              <div
-                v-for="(h, i) in shownHeaders"
-                :key="`${h.name}-${i}`"
-                class="flex gap-2 text-[12px] leading-[1.6] min-w-0"
-              >
-                <span class="text-dp-accent shrink-0 max-w-[46%] break-all">{{ h.name }}</span>
-                <span class="text-dp-muted break-all flex-1 min-w-0">{{ h.value }}</span>
-              </div>
-              <div v-if="!shownHeaders.length" class="text-[12px] text-dp-tertiary">
-                {{ t("toolbox.tools.http.emptyValue") }}
-              </div>
-            </div>
-          </el-scrollbar>
-
-          <div
-            class="shrink-0 mt-2 pt-2 border-t border-dp-divider text-[11px] leading-[1.6] text-dp-tertiary break-all"
-          >
-            {{ t("toolbox.tools.http.finalUrl") }}: {{ resp.finalUrl }}
-          </div>
-        </template>
-
-        <!-- 空态 -->
-        <div v-else class="flex-1 flex items-center justify-center px-4 text-center">
-          <span class="text-[12px] leading-[1.8] text-dp-tertiary">
-            {{ busy ? t("toolbox.tools.http.sending") : t("toolbox.tools.http.hint") }}
-          </span>
-        </div>
-      </section>
+      <!-- 右:响应(撑满剩余宽度) -->
+      <ResponseViewer
+        :resp="resp"
+        :busy="busy"
+        :spec-key="specKey"
+        :sse-active="false"
+        :sse-events="[]"
+        :sse-stats="null"
+        class="flex-1 min-w-0"
+      />
     </div>
+
+    <!-- 保存到收藏 -->
+    <el-dialog
+      v-model="saveDlg"
+      :title="editingId ? t('toolbox.tools.http.editSaved') : t('toolbox.tools.http.saveReq')"
+      width="320px"
+      :append-to-body="false"
+    >
+      <div class="flex flex-col gap-3">
+        <el-input
+          v-model="saveName"
+          :placeholder="t('toolbox.tools.http.namePh')"
+          :maxlength="80"
+          class="[&_.el-input\_\_inner]:text-[12px]"
+        />
+        <el-select
+          v-model="saveGroup"
+          filterable
+          allow-create
+          default-first-option
+          :placeholder="t('toolbox.tools.http.groupSelectPh')"
+          class="[&_.el-input\_\_inner]:text-[12px]"
+        >
+          <el-option
+            v-for="g in groupOptions"
+            :key="g"
+            :label="g || t('toolbox.tools.http.groupDefault')"
+            :value="g"
+          />
+        </el-select>
+      </div>
+      <template #footer>
+        <el-button size="small" @click="saveDlg = false">{{ t("common.cancel") }}</el-button>
+        <el-button size="small" type="primary" @click="confirmSave">{{ t("common.confirm") }}</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 导入 cURL -->
+    <el-dialog
+      v-model="curlDlg"
+      :title="t('toolbox.tools.http.importCurl')"
+      width="460px"
+      :append-to-body="false"
+    >
+      <el-input
+        v-model="curlText"
+        type="textarea"
+        resize="none"
+        :rows="9"
+        :placeholder="t('toolbox.tools.http.curlPh')"
+        class="[&_.el-textarea\_\_inner]:text-[11.5px] [&_.el-textarea\_\_inner]:font-mono [&_.el-textarea\_\_inner]:select-text"
+      />
+      <template #footer>
+        <el-button size="small" @click="curlDlg = false">{{ t("common.cancel") }}</el-button>
+        <el-button size="small" type="primary" :icon="Promotion" @click="applyCurl">
+          {{ t("toolbox.tools.http.curlApply") }}
+        </el-button>
+      </template>
+    </el-dialog>
 
     <!-- 无边框窗口的边缘/四角缩放手柄 -->
     <div class="pointer-events-none fixed inset-0 z-50" aria-hidden="true">

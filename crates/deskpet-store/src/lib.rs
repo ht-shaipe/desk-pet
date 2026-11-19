@@ -16,7 +16,10 @@ pub use ai_usage::{
 pub use opencode::{read_opencode_messages, OpenCodeMessageRow};
 pub use docs::{DocDir, DocExtStat, DocItem, DocItemMeta, DocQuery};
 pub use gallery::{ImageDupGroup, ImageItemMeta, ImageQuery};
-pub use models::{ChatEntry, ClipEntry, Favorite, ImageDir, ImageItem, ImageTag, LauncherConfig, LauncherItem};
+pub use models::{
+    ChatEntry, ClipEntry, Favorite, HttpEnv, HttpHistory, HttpRespRecord, HttpSaved, ImageDir,
+    ImageItem, ImageTag, LauncherConfig, LauncherItem,
+};
 pub use settings::AppSettings;
 pub use store::Store;
 

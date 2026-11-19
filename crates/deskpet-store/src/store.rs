@@ -3,7 +3,10 @@ use std::path::Path;
 
 use crate::Result;
 use crate::migrate::migrate_json;
-use crate::models::{ChatEntry, ClipEntry, Favorite, LauncherConfig, LauncherItem, Note};
+use crate::models::{
+    ChatEntry, ClipEntry, Favorite, HttpEnv, HttpHistory, HttpRespRecord, HttpSaved,
+    LauncherConfig, LauncherItem, Note,
+};
 
 const DB_FILE: &str = "deskpet.db";
 
@@ -359,7 +362,47 @@ CREATE TABLE IF NOT EXISTS ai_usage_file_state (
     last_cache_read INTEGER NOT NULL DEFAULT 0,
     last_cache_write INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (path, tool)
-);";
+);
+CREATE TABLE IF NOT EXISTS http_saved (
+    id TEXT PRIMARY KEY,
+    group_name TEXT NOT NULL DEFAULT '',
+    name TEXT NOT NULL DEFAULT '',
+    spec TEXT NOT NULL DEFAULT '{}',
+    sort INTEGER NOT NULL DEFAULT 0,
+    pinned INTEGER NOT NULL DEFAULT 0,
+    create_time TEXT NOT NULL DEFAULT '',
+    update_time TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_http_saved_group ON http_saved(group_name, sort);
+CREATE TABLE IF NOT EXISTS http_history (
+    id TEXT PRIMARY KEY,
+    method TEXT NOT NULL DEFAULT '',
+    url TEXT NOT NULL DEFAULT '',
+    spec TEXT NOT NULL DEFAULT '{}',
+    status INTEGER NOT NULL DEFAULT 0,
+    duration_ms INTEGER NOT NULL DEFAULT 0,
+    create_time TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_http_history_time ON http_history(create_time);
+CREATE TABLE IF NOT EXISTS http_env (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL DEFAULT '',
+    vars TEXT NOT NULL DEFAULT '[]',
+    is_active INTEGER NOT NULL DEFAULT 0,
+    sort INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS http_response (
+    id TEXT PRIMARY KEY,
+    spec_key TEXT NOT NULL DEFAULT '',
+    method TEXT NOT NULL DEFAULT '',
+    url TEXT NOT NULL DEFAULT '',
+    status INTEGER NOT NULL DEFAULT 0,
+    duration_ms INTEGER NOT NULL DEFAULT 0,
+    content_type TEXT NOT NULL DEFAULT '',
+    body TEXT NOT NULL DEFAULT '',
+    create_time TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_http_response_key ON http_response(spec_key, create_time);";
 
 /// 本地存储：SQLite（WAL），打开时建表并按需迁移旧 JSON 数据。
 pub struct Store {
@@ -385,6 +428,8 @@ impl Store {
         let _ = conn.execute("ALTER TABLE chat_message ADD COLUMN tool_call_id TEXT", []);
         // 旧 ai_usage_event 无 cost_usd 列时补加（同上，幂等；OpenCode 真实成本）
         let _ = conn.execute("ALTER TABLE ai_usage_event ADD COLUMN cost_usd REAL", []);
+        // 旧 http_saved 表无 pinned 列时补加（同上，幂等；接口请求置顶）
+        let _ = conn.execute("ALTER TABLE http_saved ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0", []);
         migrate_json(&conn, dir)?;
         purge_doc_items(&conn, dir);
         purge_orphan_image_items(&conn, dir);
@@ -674,7 +719,281 @@ impl Store {
         tx.commit()?;
         Ok(messages.len())
     }
+
+    /* ---------- 接口请求：收藏与历史 ---------- */
+
+    /// 全部接口收藏（置顶在前，其后默认分组在前、组内按 sort 升序、新更新在前）。
+    pub fn list_http_saved(&self) -> Result<Vec<HttpSaved>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, group_name, name, spec, sort, pinned, create_time, update_time
+             FROM http_saved
+             ORDER BY pinned DESC, (group_name = '') DESC, group_name ASC, sort ASC, update_time DESC",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(HttpSaved {
+                id: row.get(0)?,
+                group_name: row.get(1)?,
+                name: row.get(2)?,
+                spec: row.get(3)?,
+                sort: row.get(4)?,
+                pinned: row.get::<_, i64>(5)? != 0,
+                create_time: row.get(6)?,
+                update_time: row.get(7)?,
+            })
+        })?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    /// 新增或更新接口收藏（id 主键查重）；时间缺省时补当前，返回受影响条数。
+    pub fn upsert_http_saved(&self, item: &HttpSaved) -> Result<usize> {
+        let now = iso_now();
+        let create_time = if item.create_time.trim().is_empty() { &now } else { &item.create_time };
+        let update_time = if item.update_time.trim().is_empty() { &now } else { &item.update_time };
+        let count = self.conn.execute(
+            "INSERT INTO http_saved (id, group_name, name, spec, sort, pinned, create_time, update_time)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+             ON CONFLICT(id) DO UPDATE SET
+                group_name = excluded.group_name,
+                name = excluded.name,
+                spec = excluded.spec,
+                sort = excluded.sort,
+                pinned = excluded.pinned,
+                update_time = excluded.update_time",
+            rusqlite::params![
+                item.id,
+                item.group_name,
+                item.name,
+                item.spec,
+                item.sort,
+                item.pinned,
+                create_time,
+                update_time
+            ],
+        )?;
+        Ok(count)
+    }
+
+    /// 删除接口收藏（按 id），返回受影响条数。
+    pub fn delete_http_saved(&self, id: &str) -> Result<usize> {
+        Ok(self.conn.execute("DELETE FROM http_saved WHERE id = ?1", [id])?)
+    }
+
+    /// 重命名集合（整组迁移），返回受影响条数。
+    pub fn rename_http_group(&self, old: &str, new: &str) -> Result<usize> {
+        Ok(self.conn.execute(
+            "UPDATE http_saved SET group_name = ?2, update_time = ?3 WHERE group_name = ?1",
+            rusqlite::params![old, new, iso_now()],
+        )?)
+    }
+
+    /// 删除集合（连同其中收藏），返回受影响条数。
+    pub fn delete_http_group(&self, group: &str) -> Result<usize> {
+        Ok(self
+            .conn
+            .execute("DELETE FROM http_saved WHERE group_name = ?1", [group])?)
+    }
+
+    /// 最近请求历史（新 → 旧，上限 `limit` 条）。
+    pub fn list_http_history(&self, limit: usize) -> Result<Vec<HttpHistory>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, method, url, spec, status, duration_ms, create_time
+             FROM http_history
+             ORDER BY create_time DESC, rowid DESC
+             LIMIT ?1",
+        )?;
+        let rows = stmt.query_map([limit as i64], |row| {
+            Ok(HttpHistory {
+                id: row.get(0)?,
+                method: row.get(1)?,
+                url: row.get(2)?,
+                spec: row.get(3)?,
+                status: row.get(4)?,
+                duration_ms: row.get(5)?,
+                create_time: row.get(6)?,
+            })
+        })?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    /// 记录一次请求：同 method+url+spec 先删旧条目再插入（去重置顶），
+    /// 并裁剪至 `HTTP_HISTORY_CAP` 条。失败请求（status=0）同样记录。
+    pub fn record_http_history(&self, item: &HttpHistory) -> Result<()> {
+        let now = iso_now();
+        let create_time = if item.create_time.trim().is_empty() { &now } else { &item.create_time };
+        let tx = self.conn.unchecked_transaction()?;
+        tx.execute(
+            "DELETE FROM http_history WHERE method = ?1 AND url = ?2 AND spec = ?3",
+            rusqlite::params![item.method, item.url, item.spec],
+        )?;
+        tx.execute(
+            "INSERT INTO http_history (id, method, url, spec, status, duration_ms, create_time)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            rusqlite::params![
+                item.id,
+                item.method,
+                item.url,
+                item.spec,
+                item.status,
+                item.duration_ms,
+                create_time
+            ],
+        )?;
+        // 裁剪：按 create_time 保留最新 CAP 条
+        tx.execute(
+            "DELETE FROM http_history WHERE id NOT IN (
+                SELECT id FROM http_history ORDER BY create_time DESC, rowid DESC LIMIT ?1
+            )",
+            [HTTP_HISTORY_CAP as i64],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// 清空请求历史。
+    pub fn clear_http_history(&self) -> Result<()> {
+        self.conn.execute("DELETE FROM http_history", [])?;
+        Ok(())
+    }
+
+    /* ---------- 接口请求：环境变量 ---------- */
+
+    /// 全部环境（启用环境在前，其余按 sort 升序）。
+    pub fn list_http_envs(&self) -> Result<Vec<HttpEnv>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, name, vars, is_active, sort FROM http_env
+             ORDER BY is_active DESC, sort ASC, name ASC",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(HttpEnv {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                vars: row.get(2)?,
+                is_active: row.get::<_, i64>(3)? != 0,
+                sort: row.get(4)?,
+            })
+        })?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    /// 新增或更新环境；置为 active 时清除其他环境的 active 标记。
+    pub fn upsert_http_env(&self, item: &HttpEnv) -> Result<()> {
+        let tx = self.conn.unchecked_transaction()?;
+        if item.is_active {
+            tx.execute("UPDATE http_env SET is_active = 0 WHERE is_active = 1", [])?;
+        }
+        tx.execute(
+            "INSERT INTO http_env (id, name, vars, is_active, sort)
+             VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(id) DO UPDATE SET
+                name = excluded.name,
+                vars = excluded.vars,
+                is_active = excluded.is_active,
+                sort = excluded.sort",
+            rusqlite::params![item.id, item.name, item.vars, item.is_active, item.sort],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// 删除环境。
+    pub fn delete_http_env(&self, id: &str) -> Result<usize> {
+        Ok(self.conn.execute("DELETE FROM http_env WHERE id = ?1", [id])?)
+    }
+
+    /// 切换启用环境（None 表示不启用任何环境）。
+    pub fn set_active_http_env(&self, id: Option<&str>) -> Result<()> {
+        let tx = self.conn.unchecked_transaction()?;
+        tx.execute("UPDATE http_env SET is_active = 0 WHERE is_active = 1", [])?;
+        if let Some(id) = id {
+            tx.execute("UPDATE http_env SET is_active = 1 WHERE id = ?1", [id])?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// 当前启用环境（若无返回 None）。
+    pub fn active_http_env(&self) -> Result<Option<HttpEnv>> {
+        Ok(self
+            .list_http_envs()?
+            .into_iter()
+            .find(|e| e.is_active))
+    }
+
+    /* ---------- 接口请求：响应历史 ---------- */
+
+    /// 某请求键下的响应历史（新 → 旧）。
+    pub fn list_http_responses(&self, spec_key: &str, limit: usize) -> Result<Vec<HttpRespRecord>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, spec_key, method, url, status, duration_ms, content_type, body, create_time
+             FROM http_response
+             WHERE spec_key = ?1
+             ORDER BY create_time DESC, rowid DESC
+             LIMIT ?2",
+        )?;
+        let rows = stmt.query_map(rusqlite::params![spec_key, limit as i64], |row| {
+            Ok(HttpRespRecord {
+                id: row.get(0)?,
+                spec_key: row.get(1)?,
+                method: row.get(2)?,
+                url: row.get(3)?,
+                status: row.get(4)?,
+                duration_ms: row.get(5)?,
+                content_type: row.get(6)?,
+                body: row.get(7)?,
+                create_time: row.get(8)?,
+            })
+        })?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    /// 记录一条响应历史；同 spec_key 超出上限时裁剪最旧记录。
+    pub fn record_http_response(&self, item: &HttpRespRecord) -> Result<()> {
+        let now = iso_now();
+        let create_time = if item.create_time.trim().is_empty() { &now } else { &item.create_time };
+        let tx = self.conn.unchecked_transaction()?;
+        tx.execute(
+            "INSERT INTO http_response (id, spec_key, method, url, status, duration_ms, content_type, body, create_time)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            rusqlite::params![
+                item.id,
+                item.spec_key,
+                item.method,
+                item.url,
+                item.status,
+                item.duration_ms,
+                item.content_type,
+                item.body,
+                create_time
+            ],
+        )?;
+        tx.execute(
+            "DELETE FROM http_response WHERE spec_key = ?1 AND id NOT IN (
+                SELECT id FROM http_response WHERE spec_key = ?1
+                ORDER BY create_time DESC, rowid DESC LIMIT ?2
+            )",
+            rusqlite::params![item.spec_key, HTTP_RESPONSE_CAP as i64],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// 清空响应历史（None = 全部；Some = 指定请求键）。
+    pub fn clear_http_responses(&self, spec_key: Option<&str>) -> Result<usize> {
+        let count = match spec_key {
+            Some(key) => self
+                .conn
+                .execute("DELETE FROM http_response WHERE spec_key = ?1", [key])?,
+            None => self.conn.execute("DELETE FROM http_response", [])?,
+        };
+        Ok(count)
+    }
 }
+
+/// 每个请求键保留的响应历史上限。
+const HTTP_RESPONSE_CAP: usize = 20;
+
+/// 历史保留上限。
+const HTTP_HISTORY_CAP: usize = 100;
 
 #[cfg(test)]
 mod tests {
@@ -1041,5 +1360,115 @@ mod tests {
         let list = store.list_chat_messages().unwrap();
         assert_eq!(list.len(), 1);
         assert_eq!(list[0].content, "hi");
+    }
+
+    #[test]
+    fn http_saved_roundtrip_and_order() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        let saved = |id: &str, group: &str, name: &str, sort: i64| HttpSaved {
+            id: id.into(),
+            group_name: group.into(),
+            name: name.into(),
+            spec: "{\"url\":\"https://x\"}".into(),
+            sort,
+            ..Default::default()
+        };
+        store
+            .upsert_http_saved(&saved("s1", "生产", "登录", 1))
+            .unwrap();
+        store
+            .upsert_http_saved(&saved("s2", "", "默认组请求", 0))
+            .unwrap();
+        store
+            .upsert_http_saved(&saved("s3", "生产", "列表", 0))
+            .unwrap();
+
+        // 默认分组在前，组内按 sort 升序
+        let list = store.list_http_saved().unwrap();
+        assert_eq!(list.iter().map(|i| i.id.as_str()).collect::<Vec<_>>(), ["s2", "s3", "s1"]);
+        // 时间缺省自动补
+        assert!(list[0].create_time.starts_with("20"));
+
+        // 更新：保留首次 create_time（与 favorites 合并语义一致），spec 更新
+        let first_create = store.list_http_saved().unwrap().iter().find(|i| i.id == "s1").unwrap().create_time.clone();
+        let mut edited = saved("s1", "生产", "登录", 1);
+        edited.spec = "{\"url\":\"https://y\"}".into();
+        store.upsert_http_saved(&edited).unwrap();
+        let list = store.list_http_saved().unwrap();
+        let s1 = list.iter().find(|i| i.id == "s1").unwrap();
+        assert_eq!(s1.create_time, first_create);
+        assert_eq!(s1.spec, "{\"url\":\"https://y\"}");
+
+        // 置顶：排到最前（跨分组），取消后恢复原序
+        let mut pinned = saved("s3", "生产", "列表", 0);
+        pinned.pinned = true;
+        store.upsert_http_saved(&pinned).unwrap();
+        let list = store.list_http_saved().unwrap();
+        assert_eq!(list[0].id, "s3", "置顶条目排最前");
+        assert!(list[0].pinned);
+        let mut unpinned = pinned;
+        unpinned.pinned = false;
+        store.upsert_http_saved(&unpinned).unwrap();
+        let list = store.list_http_saved().unwrap();
+        assert_eq!(list.iter().map(|i| i.id.as_str()).collect::<Vec<_>>(), ["s2", "s3", "s1"]);
+
+        assert_eq!(store.delete_http_saved("s2").unwrap(), 1);
+        assert_eq!(store.list_http_saved().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn http_history_dedupes_and_prunes() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        let mut seq = 0u32;
+        let entry = |seq: &mut u32, url: &str, status: i64| {
+            *seq += 1;
+            HttpHistory {
+                id: format!("h{}", seq),
+                method: "GET".into(),
+                url: url.into(),
+                spec: format!("{{\"url\":\"{url}\"}}"),
+                status,
+                duration_ms: 42,
+                create_time: format!("2026-01-01T00:{:02}:{:02}Z", *seq / 60, *seq % 60),
+            }
+        };
+
+        store
+            .record_http_history(&entry(&mut seq, "https://a", 200))
+            .unwrap();
+        store
+            .record_http_history(&entry(&mut seq, "https://b", 404))
+            .unwrap();
+        // 失败请求（status=0）同样记录
+        store
+            .record_http_history(&entry(&mut seq, "https://c", 0))
+            .unwrap();
+
+        let list = store.list_http_history(100).unwrap();
+        assert_eq!(list.len(), 3, "三条全部入库");
+        assert_eq!(list[0].url, "https://c", "新 → 旧排序");
+
+        // 同 method+url+spec 重发：去重置顶而非新增
+        let mut resend = entry(&mut seq, "https://a", 500);
+        resend.spec = "{\"url\":\"https://a\"}".to_string();
+        store.record_http_history(&resend).unwrap();
+        let list = store.list_http_history(100).unwrap();
+        assert_eq!(list.len(), 3, "去重后仍为三条");
+        assert_eq!(list[0].url, "https://a");
+        assert_eq!(list[0].status, 500);
+
+        // 超上限裁剪：再造 120 条不同的，只留最新 100 条
+        for i in 0..120u32 {
+            let mut item = entry(&mut seq, &format!("https://p/{i}"), 200);
+            item.method = "POST".into(); // 避免与上面 spec 撞车（url 已不同，此处仅显式区分）
+            item.spec = format!("{{\"i\":{i}}}");
+            store.record_http_history(&item).unwrap();
+        }
+        assert_eq!(store.list_http_history(1000).unwrap().len(), 100);
+
+        store.clear_http_history().unwrap();
+        assert!(store.list_http_history(100).unwrap().is_empty());
     }
 }

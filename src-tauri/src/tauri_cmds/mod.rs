@@ -8,6 +8,7 @@ pub mod docs_cmds;
 pub mod clipboard_cmds;
 pub mod favorite_cmds;
 pub mod http_cmds;
+pub mod http_store_cmds;
 pub mod images_cmds;
 pub mod launcher_cmds;
 pub mod mcp_cmds;

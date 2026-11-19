@@ -12,8 +12,9 @@ import { ElMessageBox } from "element-plus";
 import { i18n } from "@/i18n";
 import { listApps, launchItem } from "@/api/launcher";
 import { mcpCallTool, mcpServerTools } from "@/api/mcp";
+import { httpRequest, listHttpSaved } from "@/api/toolbox";
 import { TOOLBOX_TOOLS } from "@/components/toolbox/registry";
-import type { McpServerConfig, ToolDefinition } from "@/types";
+import type { HttpRequestSpec, HttpSavedItem, McpServerConfig, ToolDefinition } from "@/types";
 import { useUiStore, type PanelView } from "@/stores/ui";
 import { useConfigStore } from "@/stores/config";
 import { usePomodoroStore, type PomoMode } from "@/stores/pomodoro";
@@ -41,6 +42,15 @@ interface McpRoute {
 
 const t = (key: string, params?: Record<string, unknown>) => i18n.global.t(key, params ?? {});
 
+/** 解析收藏条目的 spec JSON（失败返回 null）。 */
+function parseSavedSpec(item: HttpSavedItem): HttpRequestSpec | null {
+  try {
+    return JSON.parse(item.spec || "{}") as HttpRequestSpec;
+  } catch {
+    return null;
+  }
+}
+
 /** agent 循环的 system prompt（模型侧约定，非 UI 文案，双语内联）。 */
 export const SYSTEM_PROMPT = [
   "你是 Desk Pet 桌面宠物的内置助手 You are the built-in assistant of the Desk Pet app.",
@@ -50,6 +60,8 @@ export const SYSTEM_PROMPT = [
   "- open_pomodoro: 打开并启动应用内番茄钟 Open and start the in-app Pomodoro timer. 用户提及 计时/专注/番茄钟/休息（长休息/短休息）等意图时调用 Call whenever the user mentions timing/focus/pomodoro/break intent (mode: focus=专注/short=短休息/long=长休息, action: start/pause/reset/open).",
   "- open_view: 切换到应用内的界面 Switch to an in-app view（快速启动/番茄钟/剪贴板/收藏/工具箱/账户/设置等）. 用户提及本应用已有功能或界面时直接调用切换，而不是只给文字指引 Call it when the user mentions an in-app feature/view instead of giving text-only guidance.",
   "- open_tool: 打开应用内工具（工具箱）Open an in-app toolbox tool (qr/base64/des/imgcompress/http/cleanup).",
+  "- list_http_requests: 列出用户保存的 HTTP 接口 List the user's saved HTTP requests.",
+  "- call_http_request: 按 id 发送用户保存的 HTTP 接口（非 GET 先确认）Send a saved HTTP request by id (non-GET asks confirmation).",
   "- 其他 MCP 工具按其描述使用 Use other MCP tools per their descriptions.",
   "用户要求打开某应用或工具时优先直接调用对应工具，而不是只给出文字指引；",
   "调用后用一句话简要报告结果。没有合适工具或只是闲聊/问答时直接回答，不要强行调用工具。",
@@ -294,6 +306,82 @@ const BUILTIN_TOOLS: AiTool[] = [
       }
       useUiStore().openToolboxTool(tool.id);
       return { ok: true, text: `已打开工具 Opened tool: ${t(tool.titleKey)}` };
+    },
+  },
+  {
+    name: "list_http_requests",
+    description:
+      "列出用户在「接口请求」里保存的 HTTP 接口 List saved HTTP requests (id/group/name/method/url)。",
+    parameters: { type: "object", properties: {}, additionalProperties: false },
+    execute: async () => {
+      const saved = await listHttpSaved().catch(() => []);
+      if (!saved.length) {
+        return { ok: true, text: "暂无保存的接口 No saved HTTP requests." };
+      }
+      const items = saved.map((item) => {
+        const spec = parseSavedSpec(item);
+        return {
+          id: item.id,
+          group: item.group_name,
+          name: item.name,
+          method: spec?.method ?? "",
+          url: spec?.url ?? "",
+        };
+      });
+      return { ok: true, text: JSON.stringify(items) };
+    },
+  },
+  {
+    name: "call_http_request",
+    description:
+      "按 id 发送用户保存的 HTTP 接口，返回状态码/耗时/响应体（截断） Send a saved HTTP request by id; returns status/duration/truncated body. 破坏性方法（非 GET/HEAD）会先向用户确认。Destructive methods ask for confirmation.",
+    parameters: {
+      type: "object",
+      properties: {
+        id: {
+          type: "string",
+          description: "list_http_requests 返回的收藏 id The saved request id",
+        },
+      },
+      required: ["id"],
+      additionalProperties: false,
+    },
+    execute: async (args) => {
+      const id = String(args.id ?? "").trim();
+      const saved = await listHttpSaved().catch(() => []);
+      const item = saved.find((entry) => entry.id === id);
+      if (!item) {
+        return { ok: false, text: `未找到该收藏 id Saved request not found: ${id}` };
+      }
+      const spec = parseSavedSpec(item);
+      if (!spec?.url) {
+        return { ok: false, text: `收藏条目缺少有效请求 spec "${item.name}"` };
+      }
+      const method = (spec.method || "GET").toUpperCase();
+      if (method !== "GET" && method !== "HEAD") {
+        try {
+          await ElMessageBox.confirm(
+            `AI 请求发送 ${method} ${spec.url}\nAI wants to send ${method} ${spec.url}`,
+            t("toolbox.tools.http.title"),
+            { type: "warning", confirmButtonText: t("common.confirm"), cancelButtonText: t("common.cancel") },
+          );
+        } catch {
+          return { ok: true, text: "用户拒绝了该请求 The user declined this request." };
+        }
+      }
+      const resp = await httpRequest(spec);
+      const body = resp.binary
+        ? `(binary response, ${resp.size} bytes)`
+        : resp.body.slice(0, 8000);
+      return {
+        ok: resp.status >= 200 && resp.status < 400,
+        text: JSON.stringify({
+          status: resp.status,
+          durationMs: resp.durationMs,
+          truncated: resp.truncated || resp.body.length > 8000,
+          body,
+        }),
+      };
     },
   },
 ];

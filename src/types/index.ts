@@ -460,6 +460,29 @@ export interface HttpHeader {
   value: string;
 }
 
+/** 请求体类型 */
+export type HttpBodyType = "json" | "text" | "form-urlencoded" | "form-data";
+
+/** 认证配置：bearer 填 token，basic 填 username/password，apikey 填 key/value（in 指定落点） */
+export interface HttpAuth {
+  type: "none" | "bearer" | "basic" | "apikey";
+  token?: string;
+  username?: string;
+  password?: string;
+  /** API Key 参数名（默认 X-API-Key） */
+  key?: string;
+  /** API Key 值 */
+  value?: string;
+  /** API Key 落点：header（默认）或 query */
+  in?: "header" | "query";
+}
+
+/** form-data 的文件字段：name 为字段名，path 为本地文件绝对路径 */
+export interface HttpFormFile {
+  name: string;
+  path: string;
+}
+
 /** 交给 Rust 代理发送的请求描述 */
 export interface HttpRequestSpec {
   url: string;
@@ -467,7 +490,86 @@ export interface HttpRequestSpec {
   params: HttpHeader[];
   headers: HttpHeader[];
   body?: string;
-  bodyType?: "json" | "text";
+  bodyType?: HttpBodyType;
+  /** form-urlencoded 与 form-data 的文本字段 */
+  form?: HttpHeader[];
+  /** form-data 的文件字段 */
+  formFiles?: HttpFormFile[];
+  auth?: HttpAuth;
+  /** 超时毫秒数；缺省或 0 用默认 30s */
+  timeoutMs?: number;
+}
+
+/** 接口收藏条目（store 模型 snake_case；spec 为 JSON 字符串，与 Favorite.payload 同模式） */
+export interface HttpSavedItem {
+  id: string;
+  group_name: string;
+  name: string;
+  spec: string;
+  sort: number;
+  /** 置顶：侧栏顶部单独分组展示 */
+  pinned: boolean;
+  create_time: string;
+  update_time: string;
+}
+
+/** 请求历史条目（发送即记录；status=0 表示请求失败） */
+export interface HttpHistoryItem {
+  id: string;
+  method: string;
+  url: string;
+  spec: string;
+  status: number;
+  duration_ms: number;
+  create_time: string;
+}
+
+/** 接口请求环境变量集（同一时刻至多一个启用） */
+export interface HttpEnvItem {
+  id: string;
+  name: string;
+  /** 变量数组 JSON 串（[{name, value}]） */
+  vars: string;
+  is_active: boolean;
+  sort: number;
+}
+
+/** 接口响应历史条目（同 spec_key 保留 20 条） */
+export interface HttpRespRecordItem {
+  id: string;
+  spec_key: string;
+  method: string;
+  url: string;
+  status: number;
+  duration_ms: number;
+  content_type: string;
+  body: string;
+  create_time: string;
+}
+
+/** SSE 单个事件 */
+export interface HttpSseEvent {
+  event?: string | null;
+  data: string;
+  id?: string | null;
+  retry?: number | null;
+}
+
+/** SSE 流结束统计 */
+export interface HttpSseStats {
+  events: number;
+  bytes: number;
+  status: number;
+  durationMs: number;
+  truncated: boolean;
+}
+
+/** 共享 Cookie jar 中的条目 */
+export interface HttpCookieEntry {
+  name: string;
+  value: string;
+  domain: string;
+  path: string;
 }
 
 /** Rust 代理返回的请求结果（含实际请求头与完整响应头） */
@@ -483,6 +585,10 @@ export interface HttpResponseData {
   truncated: boolean;
   /** 非文本类型响应，前端不展示内容 */
   binary: boolean;
+  /** 响应 Content-Type（未带则为空串） */
+  contentType: string;
+  /** 图片响应时的预览 dataURL（base64，前端 <img> 直接展示） */
+  dataUrl?: string;
   /** 跟随重定向后的最终地址 */
   finalUrl: string;
 }

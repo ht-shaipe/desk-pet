@@ -8,7 +8,7 @@ This file is generated from the current lockfiles. Desk Pet incorporates the
 open-source components listed below, each licensed by its respective author(s)
 under the license indicated. Refer to each repository for the full license text.
 
-## Rust 依赖（425）
+## Rust 依赖（427）
 
 | 组件 | 版本 | 许可证 | 源码 |
 | --- | --- | --- | --- |
@@ -208,6 +208,7 @@ under the license indicated. Refer to each repository for the full license text.
 | md-5 | 0.11.0 | MIT OR Apache-2.0 | https://github.com/RustCrypto/hashes |
 | memchr | 2.8.3 | Unlicense OR MIT | https://github.com/BurntSushi/memchr |
 | mime | 0.3.17 | MIT OR Apache-2.0 | https://github.com/hyperium/mime |
+| mime_guess | 2.0.5 | MIT OR Apache-2.0 | https://github.com/abonander/mime_guess |
 | minisign-verify | 0.3.0 | MIT | https://github.com/jedisct1/rust-minisign-verify |
 | miniz_oxide | 0.8.9 | MIT OR Zlib OR Apache-2.0 | https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide |
 | miniz_oxide | 0.9.1 | MIT OR Zlib OR Apache-2.0 | https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide |
@@ -406,6 +407,7 @@ under the license indicated. Refer to each repository for the full license text.
 | unicode-normalization | 0.1.26 | (MIT OR Apache-2.0) AND Unicode-3.0 | https://github.com/unicode-rs/unicode-normalization |
 | unicode-properties | 0.1.5 | (MIT OR Apache-2.0) AND Unicode-3.0 | https://github.com/unicode-rs/unicode-properties |
 | unicode-segmentation | 1.13.3 | MIT OR Apache-2.0 | https://github.com/unicode-rs/unicode-segmentation |
+| unicase | 2.10.0 | MIT OR Apache-2.0 | https://github.com/seanmonstar/unicase |
 | untrusted | 0.9.0 | ISC | https://github.com/briansmith/untrusted |
 | url | 2.5.8 | MIT OR Apache-2.0 | https://github.com/servo/rust-url |
 | urlpattern | 0.6.0 | MIT | https://github.com/denoland/rust-urlpattern |

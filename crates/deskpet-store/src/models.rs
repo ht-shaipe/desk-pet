@@ -138,3 +138,71 @@ pub struct ImageTag {
     /// 使用该标签的条目数（列表查询填充，非表字段）
     pub item_count: u64,
 }
+
+/// 接口请求收藏条目（独立窗口的集合管理）。字段名保持 snake_case 与前端 TS 契约一致。
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, PartialEq)]
+#[serde(default)]
+pub struct HttpSaved {
+    pub id: String,
+    /// 所属集合名，空串归入默认分组
+    pub group_name: String,
+    pub name: String,
+    /// HttpRequestSpec 的 JSON 串（含 params/headers/body/auth 等），由前端序列化
+    pub spec: String,
+    /// 组内排序
+    pub sort: i64,
+    /// 置顶：侧栏顶部单独分组展示
+    pub pinned: bool,
+    /// ISO 时间字符串
+    pub create_time: String,
+    pub update_time: String,
+}
+
+/// 接口请求历史条目（发送即记录，上限裁剪由 store 维护）。
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, PartialEq)]
+#[serde(default)]
+pub struct HttpHistory {
+    pub id: String,
+    pub method: String,
+    pub url: String,
+    /// HttpRequestSpec 的 JSON 串，用于一键回填
+    pub spec: String,
+    /// HTTP 状态码；请求失败（网络错误等）为 0
+    pub status: i64,
+    pub duration_ms: i64,
+    /// ISO 时间字符串
+    pub create_time: String,
+}
+
+/// 接口请求环境变量集（多环境切换；同一时刻至多一个 is_active）。
+/// 字段名保持 snake_case 与前端 TS 契约一致。
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, PartialEq)]
+#[serde(default)]
+pub struct HttpEnv {
+    pub id: String,
+    pub name: String,
+    /// 变量数组的 JSON 串（[{name, value}]），由前端序列化
+    pub vars: String,
+    /// 是否为当前启用环境
+    pub is_active: bool,
+    pub sort: i64,
+}
+
+/// 接口响应历史条目（同 spec_key 保留上限由 store 维护）。
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, PartialEq)]
+#[serde(default)]
+pub struct HttpRespRecord {
+    pub id: String,
+    /// 请求去重键（method + 原始 URL，模板未求值）
+    pub spec_key: String,
+    pub method: String,
+    pub url: String,
+    /// HTTP 状态码；请求失败为 0
+    pub status: i64,
+    pub duration_ms: i64,
+    pub content_type: String,
+    /// 响应体文本（存储上限截断，二进制为空）
+    pub body: String,
+    /// ISO 时间字符串
+    pub create_time: String,
+}

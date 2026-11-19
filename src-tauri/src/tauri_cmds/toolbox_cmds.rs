@@ -5,7 +5,7 @@ use deskpet_os::imaging::{CompressOutcome, CompressParams, OutputFormat};
 use deskpet_os::watermark::{WatermarkKind, WatermarkParams, WmPos};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 
 use crate::paths::data_dir;
 
@@ -286,11 +286,85 @@ pub fn reveal_path(path: String) -> Result<(), String> {
 }
 
 /// 由 Rust 代理发送 HTTP 请求，绕开 WebView 跨域限制，并回传请求/响应头。
+/// 无论成败均记入请求历史（失败 status=0），供独立窗口历史栏回填重发；
+/// 成功的文本响应额外记入响应历史（供对比 diff）。
 #[tauri::command]
 pub async fn http_request(
+    app: AppHandle,
     spec: deskpet_os::http::HttpRequestSpec,
 ) -> Result<deskpet_os::http::HttpResponseData, String> {
-    deskpet_os::http::send(&spec).await
+    let vars = crate::tauri_cmds::http_store_cmds::active_env_vars(&app);
+    let result = deskpet_os::http::send(&spec, &vars).await;
+    let (status, duration_ms) = match &result {
+        Ok(resp) => (i64::from(resp.status), i64::try_from(resp.duration_ms).unwrap_or(0)),
+        Err(_) => (0, 0),
+    };
+    record_http_history(&app, &spec, status, duration_ms);
+    if let Ok(resp) = &result {
+        record_http_response(&app, &spec, resp);
+    }
+    result
+}
+
+/// 响应体存储上限（256KB，避免撑爆 SQLite）。
+const RESPONSE_STORE_MAX: usize = 256 * 1024;
+
+/// 成功响应写入响应历史；spec_key = 方法 + 求值前 URL（模板文本，稳定可复现）。
+fn record_http_response(
+    app: &AppHandle,
+    spec: &deskpet_os::http::HttpRequestSpec,
+    resp: &deskpet_os::http::HttpResponseData,
+) {
+    if resp.binary {
+        return;
+    }
+    let item = deskpet_store::HttpRespRecord {
+        id: format!("r-{}", uuid::Uuid::new_v4()),
+        spec_key: format!("{} {}", spec.method.trim().to_uppercase(), spec.url.trim()),
+        method: spec.method.trim().to_ascii_uppercase(),
+        url: spec.url.trim().to_string(),
+        status: i64::from(resp.status),
+        duration_ms: i64::try_from(resp.duration_ms).unwrap_or(0),
+        content_type: resp.content_type.clone(),
+        body: resp.body.chars().take(RESPONSE_STORE_MAX).collect(),
+        create_time: String::new(),
+    };
+    if let Err(e) = app
+        .state::<crate::state::AppState>()
+        .store
+        .lock()
+        .unwrap()
+        .record_http_response(&item)
+    {
+        eprintln!("[http] response record failed: {e}");
+    }
+}
+
+/// 请求历史写入（静默失败：历史缺失不影响请求本身）。
+fn record_http_history(
+    app: &AppHandle,
+    spec: &deskpet_os::http::HttpRequestSpec,
+    status: i64,
+    duration_ms: i64,
+) {
+    let item = deskpet_store::HttpHistory {
+        id: format!("h-{}", uuid::Uuid::new_v4()),
+        method: spec.method.trim().to_ascii_uppercase(),
+        url: spec.url.trim().to_string(),
+        spec: serde_json::to_string(spec).unwrap_or_default(),
+        status,
+        duration_ms,
+        create_time: String::new(),
+    };
+    if let Err(e) = app
+        .state::<crate::state::AppState>()
+        .store
+        .lock()
+        .unwrap()
+        .record_http_history(&item)
+    {
+        eprintln!("[http] history record failed: {e}");
+    }
 }
 
 /// 文档转换结果。needs_ocr 单独标记：扫描版 PDF（无文本层）不是错误，而是需要 OCR 的明确状态。
